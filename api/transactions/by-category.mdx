@@ -1,14 +1,14 @@
 ---
-title: "GET /money_transfers_by_category/<category_id> — Transfers by category"
-sidebarTitle: "GET /money_transfers_by_category/<id>"
-description: "Return all MoneyTransfer records in the user's active wallet that are tagged with the given category ID. Results include full tag lists and creator username per transfer."
+title: "GET /money_transfers_by_category — Transfers by Category"
+sidebarTitle: "By Category"
+description: "Return transfers in the active wallet tagged with a given category ID. Returns 404 if the category is not found or 200 with a message if no tags exist."
 ---
 
 Return all money transfers in the authenticated user's active wallet that carry a tag belonging to the specified category. Filtering is scoped to the current user's active wallet — transfers in other wallets that share the same category tag are excluded from the response. Each transfer in the result includes the full set of its own tags (which may span multiple categories) and the display name of the user who created it.
 
 ## Endpoint
 
-```
+```http
 GET /money_transfers_by_category/<category_id>
 ```
 

@@ -1,14 +1,14 @@
 ---
-title: "GET /money/<id> — Fetch a single money transfer"
-sidebarTitle: "GET /money/<id>"
-description: "Retrieve a single MoneyTransfer record by its ID. Returns the transfer's amount, description, and creation timestamp in ISO 8601 format."
+title: "GET /money/<id> — Retrieve a Single Money Transfer"
+sidebarTitle: "Get Transfer"
+description: "Retrieve a single MoneyTransfer record by its ID. Returns the amount, description, and creation timestamp in ISO 8601 format. Requires authentication."
 ---
 
 Fetch the details of a single money transfer by its integer ID. The response includes the transfer's amount, description, and the time it was created. This endpoint requires an authenticated session — unauthenticated requests are redirected to the login flow.
 
 ## Endpoint
 
-```
+```http
 GET /money/<id>
 ```
 

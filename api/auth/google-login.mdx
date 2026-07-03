@@ -1,7 +1,7 @@
 ---
 title: "GET /google_login — Initiate Google OAuth Sign-In"
 sidebarTitle: "GET /google_login"
-description: "GET /google_login initiates the Google OAuth 2.0 flow. On success, creates or updates the user record and sets the session cookie."
+description: "GET /google_login starts the Google OAuth 2.0 flow, creates a new user record on first sign-in, logs the user in, and redirects to the home page."
 ---
 
 The `/google_login` endpoint is the single entry point for authentication in Life Cost. It uses Flask-Dance's Google OAuth 2.0 integration to verify the user's identity via their Google account. No existing session or credentials are required to reach this endpoint — it is intentionally public so that unauthenticated users can be directed here to sign in.
@@ -27,23 +27,23 @@ If `google.authorized` is `False` (i.e. no OAuth token exists in the current ses
 Once `google.authorized` is `True`, the endpoint:
 
 1. Fetches the authenticated user's profile from the Google API:
-   ```
+   ```text
    GET https://www.googleapis.com/oauth2/v1/userinfo
    ```
 2. Extracts `name`, `email`, and `picture` from the response.
 3. Looks up the user by email in the database.
-   - **New user** — Creates a new `User` record with `username` set to the Google display name, `email`, and `picture` (avatar URL). The new user is appended to all existing wallets via the `user_wallet` join table, and `last_visited_wallet_id` is set to the first available wallet.
-   - **Existing user** — Updates `username` and `picture` in case they have changed in Google's records. The email address is never changed.
+   - **New user** — Creates a new `User` record with `username` set to the Google display name, `email`, and `picture` (avatar URL). The new user is appended to all existing wallets via the `user_wallet` join table, and `last_visited_wallet_id` is set to the first available wallet's ID.
+   - **Existing user** — No fields are updated. The existing `username`, `email`, and `picture` values are left unchanged.
 4. Calls `login_user(user)` to establish the Flask-Login session cookie.
-5. Redirects to `/` (the `index` route).
+5. Redirects to `/` (the `views.index` route).
 
 ## User record fields
 
 | Field | Source | Notes |
 |---|---|---|
-| `username` | Google `name` | Updated on every login |
+| `username` | Google `name` | Set at first login only; not updated on re-login |
 | `email` | Google `email` | Used as the unique lookup key; never updated after creation |
-| `picture` | Google `picture` | Avatar URL; updated on every login |
+| `picture` | Google `picture` | Avatar URL; set at first login only; not updated on re-login |
 
 ## Example
 

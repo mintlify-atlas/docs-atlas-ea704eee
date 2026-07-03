@@ -1,7 +1,7 @@
 ---
 title: "POST /update_last_visited_wallet — Switch Active Wallet"
-sidebarTitle: "POST /update_last_visited_wallet"
-description: "POST /update_last_visited_wallet sets the user's active wallet. All transaction queries are scoped to this wallet."
+sidebarTitle: "Update Last Visited"
+description: "Sets the current user's active wallet context by wallet ID. Transaction queries, charts, and summaries scope to this wallet until changed. Login required."
 ---
 
 The `POST /update_last_visited_wallet` endpoint updates the currently authenticated user's active wallet context. Every transaction query in the application — including money transfers, chart data, monthly summaries, and category breakdowns — is scoped to `current_user.last_visited_wallet_id`. Calling this endpoint with a different wallet ID is what switches the user's view from one wallet to another without logging out or creating a new session.

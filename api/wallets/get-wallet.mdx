@@ -1,7 +1,7 @@
 ---
-title: "GET /wallet/<id> — Retrieve a Wallet by ID"
-sidebarTitle: "GET /wallet"
-description: "GET /wallet/<id> returns the wallet name and description for the given ID. Requires an active session."
+title: "GET /wallet/<id> — Retrieve a Single Wallet by ID"
+sidebarTitle: "Get Wallet"
+description: "Returns a wallet's id, name, and description for the given numeric ID. Protected by login_required; an active session cookie is mandatory."
 ---
 
 The `GET /wallet/<id>` endpoint fetches a single wallet's details by its numeric ID. This is useful for displaying wallet metadata in the UI or verifying a wallet's existence before performing operations against it. The endpoint is protected by `@login_required`, so an authenticated session cookie must accompany every request.

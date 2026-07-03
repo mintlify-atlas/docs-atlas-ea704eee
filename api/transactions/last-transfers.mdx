@@ -1,7 +1,7 @@
 ---
-title: "GET /last_money_transfers/<limit> — Fetch the most recent transfers"
-sidebarTitle: "GET /last_money_transfers/<limit>"
-description: "Return the N most recent MoneyTransfer records for the current user's active wallet, ordered newest-first. Each transfer includes its tags and the name of the user who created it."
+title: "GET /last_money_transfers/<limit> — Recent Transfers"
+sidebarTitle: "Last Transfers"
+description: "Return the most recent MoneyTransfer records for the active wallet, ordered newest-first. Each transfer includes tags and the creator username."
 ---
 
 Return the most recent money transfers for the authenticated user's currently active wallet, ordered by `created_at` descending (newest first). Each item in the response array includes the full tag list and the display name of the user who created the transfer, making this endpoint suitable for feeding activity feeds and dashboards.
@@ -12,7 +12,7 @@ Return the most recent money transfers for the authenticated user's currently ac
 
 ## Endpoint
 
-```
+```http
 GET /last_money_transfers/<limit>
 ```
 

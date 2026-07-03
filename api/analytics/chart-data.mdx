@@ -18,8 +18,8 @@ All records are filtered to `current_user.last_visited_wallet_id` — the wallet
 
 ### Body parameters
 
-<ParamField body="timeZone" type="string" required>
-  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The server uses this value to convert each UTC-stored `created_at` timestamp to a local date before grouping. If an invalid or unrecognised timezone name is supplied, the server will raise a `pytz` exception.
+<ParamField body="timeZone" type="string">
+  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The server uses this value to convert each UTC-stored `created_at` timestamp to a local date before grouping. Defaults to `"SYSTEM"` if omitted. If an invalid or unrecognised timezone name is supplied, the server will raise a `pytz` exception.
 </ParamField>
 
 ## Response

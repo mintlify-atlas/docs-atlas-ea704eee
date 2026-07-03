@@ -1,5 +1,5 @@
 ---
-title: "Authenticate with the Life Cost API"
+title: "Authenticate with the Life Cost API Using Google OAuth 2.0"
 sidebarTitle: "Authentication"
 description: "Life Cost uses Google OAuth 2.0 and Flask-Login session cookies for authentication. Browser-based flow only — no API key or Bearer token is supported."
 ---
@@ -59,7 +59,7 @@ All wallet-scoped data (transactions, analytics, etc.) is automatically filtered
   <Step title="User lookup or creation">
     Back in `/google_login`, `google.authorized` is now `True`. The handler calls the Google userinfo API to retrieve `name`, `email`, and `picture`.
 
-    - If a `User` row with that email already exists, the username and picture are refreshed.
+    - If a `User` row with that email already exists, the existing record is used as-is without modification.
     - If no row exists, a new `User` is created, all existing wallets are associated with the account, and `last_visited_wallet_id` is set to the first available wallet.
 
     ```python

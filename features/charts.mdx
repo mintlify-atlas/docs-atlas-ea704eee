@@ -4,7 +4,7 @@ sidebarTitle: "Charts"
 description: "Life Cost provides a line chart of daily spending over time and a pie chart showing income vs. expense breakdown for your active wallet."
 ---
 
-Life Cost includes two D3-powered charts that turn your transaction history into visual summaries. The **line chart** plots your running financial balance day by day over the full lifetime of the active wallet, and the **pie/donut chart** breaks down the overall split between income and expenses. Both charts are scoped to `current_user.last_visited_wallet_id` and adjust for the client's local timezone so day boundaries match what you see in the calendar.
+Life Cost includes two D3-powered charts that turn your transaction history into visual summaries. The **line chart** plots a cumulative running total day by day over the full lifetime of the active wallet (using subtraction, so income days push the line down and expense days push it up), and the **pie/donut chart** breaks down the overall split between credits and debits. Both charts are scoped to `current_user.last_visited_wallet_id` and adjust for the client's local timezone so day boundaries match what you see in the calendar.
 
 ## Opening the Chart Modal
 
@@ -44,7 +44,7 @@ The server fetches every `MoneyTransfer` for the active wallet, groups them by l
 @login_required
 def chart_data():
     data = request.get_json()
-    client_tz = pytz.timezone(data.get('timeZone', 'UTC'))
+    client_tz = pytz.timezone(data.get('timeZone', 'SYSTEM'))
 
     transfers = MoneyTransfer.query.filter(
         MoneyTransfer.wallet_id == current_user.last_visited_wallet_id
@@ -60,7 +60,7 @@ def chart_data():
     return jsonify(days)
 ```
 
-The client then accumulates a **running total** before rendering — each day's `Close` value becomes the sum of all previous days plus the current day's net amount:
+The client then accumulates a **running total** before rendering — each day's `Close` value is computed by subtracting the current day's net amount from the previous running value:
 
 ```js
 let lastValue = 0;
@@ -71,10 +71,10 @@ chartData.forEach(item => {
 buildChart(chartData);
 ```
 
-The resulting SVG uses a `d3.scaleUtc` x-axis for dates and a `d3.scaleLinear` y-axis for the monetary balance. Hovering the chart shows a tooltip with the exact date and balance value; clicking a data point closes the modal and loads that day's transactions into the main table.
+The resulting SVG uses a `d3.scaleUtc` x-axis for dates and a `d3.scaleLinear` y-axis for the monetary value. Hovering the chart shows a tooltip with the exact date and balance value; clicking a data point closes the modal and loads that day's transactions into the main table.
 
 <Info>
-  The line chart shows your **cumulative balance** — the running sum of all daily net amounts — not just the isolated amount for each day. A flat line means your balance held steady; a downward slope means you spent more than you earned over that period.
+  The line chart shows a **cumulative running total** computed by subtracting each day's net amount from the previous value. Because positive amounts (income) are subtracted, income days push the line **down** and expense days (negative amounts) push the line **up**. A downward slope means you earned more than you spent over that period; an upward slope means net spending exceeded income.
 </Info>
 
 ## Pie / Donut Chart — Income vs. Expenses
@@ -82,14 +82,14 @@ The resulting SVG uses a `d3.scaleUtc` x-axis for dates and a `d3.scaleLinear` y
 **Endpoint:** `POST /pi_data`  
 **Request body:** `{ "timeZone": "<IANA timezone string>" }`
 
-The server sums all positive amounts (income) and all negative amounts (expenses) separately across every transaction in the active wallet:
+The server iterates over every transaction in the active wallet and accumulates two running totals. Note the counter-intuitive variable naming in the source: **positive amounts** (money coming in) accumulate into `outcome`, and **negative amounts** (money going out) accumulate into `income`. The JSON response preserves these field names exactly:
 
 ```python
 @app.route("/pi_data", methods=['POST'])
 @login_required
 def pi_data():
     data = request.get_json()
-    client_tz = pytz.timezone(data.get('timeZone', 'UTC'))
+    client_tz = pytz.timezone(data.get('timeZone', 'SYSTEM'))
 
     transfers = MoneyTransfer.query.filter(
         MoneyTransfer.wallet_id == current_user.last_visited_wallet_id
@@ -97,13 +97,18 @@ def pi_data():
 
     income = outcome = 0
     for transfer in transfers:
-        if transfer.amount > 0:
-            outcome += transfer.amount
+        amount = transfer.amount
+        if amount > 0:
+            outcome += amount   # positive amounts (credits) → outcome
         else:
-            income += transfer.amount
+            income += amount    # negative amounts (debits) → income
 
     return jsonify({'income': income, 'outcome': outcome})
 ```
+
+<Warning>
+  The `pi_data` response field names do not follow the conventional meaning. `outcome` holds the **sum of positive (credit) amounts**, and `income` holds the **sum of negative (debit) amounts**. This is the behavior as implemented in the source code.
+</Warning>
 
 The client renders the result as a **donut chart** (inner radius ≈ 67% of outer radius) using `createPieChart()`. Each segment is labeled with its name and value. Segment colors are drawn from a D3 spectral color scale.
 

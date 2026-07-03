@@ -1,5 +1,5 @@
 ---
-title: "Transactions: Log Income and Expenses Daily"
+title: "Transactions: Log Income and Expense Entries Daily"
 sidebarTitle: "Transactions"
 description: "Log income and expense transactions in Life Cost with a description, amount, and tags. Amounts can be positive (income) or negative (expense)."
 ---
@@ -28,7 +28,7 @@ class MoneyTransfer(db.Model):
 | `amount`      | Float         | Positive = income, negative = expense              |
 | `description` | String (200)  | Short human-readable label; required               |
 | `created_at`  | DateTime      | UTC timestamp; can be provided on creation         |
-| `modifed_at`  | DateTime      | Updated automatically on every edit                |
+| `modifed_at`  | DateTime      | Timestamp column; note the intentional typo in the column name (one `d`, not two) as defined in the source model |
 | `user_id`     | Integer (FK)  | ID of the user who created the transaction         |
 
 Tags are stored separately in the `Tag` model and link to a transaction via `money_transfer_id`. See [Categories & Tags](/features/categories-tags) for details.
@@ -97,19 +97,21 @@ The `edit_money` endpoint deletes all existing tags for the transaction and re-c
 @app.route("/edit_money", methods=['POST'])
 def edit_money():
     data = request.json
-    edited = MoneyTransfer.query.filter_by(id=data["id"]).first()
-    edited.amount = data["amount"]
-    edited.description = data["description"]
-    edited.modified_at = datetime.utcnow()
+    edited_money_transfer = MoneyTransfer.query.filter_by(id=data["id"]).first()
 
-    Tag.query.filter_by(money_transfer_id=edited.id).delete()
+    edited_money_transfer.amount = data["amount"]
+    edited_money_transfer.description = data["description"]
+    edited_money_transfer.modified_at = datetime.utcnow()
+
+    Tag.query.filter_by(money_transfer_id=edited_money_transfer.id).delete()
     for tag_name in data["tags"]:
         category = Category.query.filter_by(name=tag_name).first()
         if not category:
             category = Category(name=tag_name, category_parent=None, number_of_operation=0)
             db.session.add(category)
             db.session.flush()
-        db.session.add(Tag(category_id=category.id, money_transfer_id=edited.id))
+        new_tag = Tag(category_id=category.id, money_transfer_id=edited_money_transfer.id)
+        db.session.add(new_tag)
     db.session.commit()
 ```
 
@@ -117,15 +119,14 @@ def edit_money():
 
 Click the trash icon in any row's actions column, or use the **Eliminar** button in the info panel. A `DELETE /remove_money/<id>` request is sent immediately — no confirmation dialog is shown.
 
-The server deletes all `Tag` rows linked to the transaction before removing the `MoneyTransfer` record itself:
+The server deletes all `Tag` rows linked to the transaction before delegating the final removal to the `remove_data()` helper, which calls `db.session.delete()` and `db.session.commit()`:
 
 ```python
 @app.route("/remove_money/<int:id>", methods=['DELETE'])
 def remove_money(id):
     money_to_delete = MoneyTransfer.query.get_or_404(id)
     Tag.query.filter_by(money_transfer_id=money_to_delete.id).delete()
-    db.session.delete(money_to_delete)
-    db.session.commit()
+    return remove_data(money_to_delete, "MoneyTransfer")
 ```
 
 After deletion the table reloads (returning to the last selected date or the default 5 most-recent transactions) and the calendar updates its daily totals.

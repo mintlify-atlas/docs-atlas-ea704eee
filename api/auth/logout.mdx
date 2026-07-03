@@ -1,7 +1,7 @@
 ---
-title: "GET /logout — End the Current User Session"
+title: "GET /logout — Terminate the Current User Session"
 sidebarTitle: "GET /logout"
-description: "GET /logout calls Flask-Login's logout_user() to clear the session cookie and redirects the user to the home page."
+description: "GET /logout calls Flask-Login's logout_user() to clear the session cookie and redirects the now-unauthenticated user back to the application home page."
 ---
 
 The `/logout` endpoint terminates the current user's authenticated session. It delegates to Flask-Login's `logout_user()` function, which clears the session cookie from the browser, then issues an HTTP redirect to the application root. This is a standard browser-navigation endpoint — it does not return a JSON body.

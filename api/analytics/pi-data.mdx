@@ -1,10 +1,10 @@
 ---
-title: "POST /pi_data — Income vs. Expense Breakdown"
+title: "POST /pi_data — Income and Expense Totals Breakdown"
 sidebarTitle: "POST /pi_data"
 description: "POST /pi_data returns the total income and total expenses for the active wallet across all time, used to render the income vs. expense pie chart."
 ---
 
-The `/pi_data` endpoint scans every `MoneyTransfer` record in the user's active wallet and partitions each transaction into one of two buckets: income (positive amounts) or outcome (negative amounts). The resulting sums are returned as a single JSON object that powers the income-vs-expense pie chart on the dashboard. All time history is included — unlike the monthly endpoints, there is no date filter applied here.
+The `/pi_data` endpoint scans every `MoneyTransfer` record in the user's active wallet and partitions each transaction into one of two buckets based on sign: positive amounts are accumulated into `outcome`, and negative amounts are accumulated into `income`. The resulting sums are returned as a single JSON object that powers the income-vs-expense pie chart on the dashboard. All time history is included — unlike the monthly endpoints, there is no date filter applied here.
 
 ## Authentication
 
@@ -18,8 +18,8 @@ All records are filtered to `current_user.last_visited_wallet_id` — the wallet
 
 ### Body parameters
 
-<ParamField body="timeZone" type="string" required>
-  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The timezone is used when iterating over transfers to localise each `created_at` timestamp, keeping the data processing pipeline consistent with other analytics endpoints.
+<ParamField body="timeZone" type="string">
+  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The timezone is used when iterating over transfers to localise each `created_at` timestamp, keeping the data processing pipeline consistent with other analytics endpoints. Defaults to `"SYSTEM"` if omitted.
 </ParamField>
 
 ## Response
@@ -62,6 +62,6 @@ curl -X POST https://your-domain.com/pi_data \
 }
 ```
 
-<Note>
-  The field name `income` is used in the response to hold the sum of **negative** amounts (expenses), and `outcome` holds the sum of **positive** amounts (income entries). This naming reflects the internal variable convention in the source code. The `income` field will therefore be a negative number or zero, and `outcome` will be a positive number or zero.
-</Note>
+<Warning>
+  The field names in this response are counter-intuitive. `income` holds the sum of **negative** amounts (expenses/withdrawals) and will be a negative number or zero. `outcome` holds the sum of **positive** amounts (credits/deposits) and will be a positive number or zero. This naming reflects the internal variable convention in the source code exactly — no transformation is applied before the JSON is returned.
+</Warning>

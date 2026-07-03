@@ -1,7 +1,7 @@
 ---
-title: "Life Cost REST API Overview"
+title: "Life Cost API Overview: Endpoints, Auth, and Error Handling"
 sidebarTitle: "Overview"
-description: "Life Cost exposes a JSON REST API for wallets, transactions, categories, tags, and analytics. All endpoints use session-based authentication via Google OAuth."
+description: "Complete reference for the Life Cost REST API: wallets, transactions, categories, tags, and analytics with Google OAuth session authentication."
 ---
 
 Life Cost is a personal finance web application built with Flask and SQLAlchemy. Its backend exposes a REST API that the built-in frontend uses to manage wallets, record money transfers, organise transactions with categories and tags, and retrieve analytics data. All state is scoped to the authenticated user's **last visited wallet**, which means most data-returning endpoints automatically filter results by the wallet the user most recently viewed.
@@ -116,13 +116,13 @@ Content-Type: application/json
 ## Explore by Resource
 
 <CardGroup cols={2}>
-  <Card title="Wallets" icon="wallet" href="/api/wallets">
+  <Card title="Wallets" icon="wallet" href="/api/wallets/get-wallet">
     Create and manage spending wallets. Set the active wallet context used by all transaction and analytics endpoints.
   </Card>
-  <Card title="Transactions" icon="money-bill-transfer" href="/api/transactions">
+  <Card title="Transactions" icon="money-bill-transfer" href="/api/transactions/get-money">
     Add, edit, delete, and query money transfers with full tag and category support.
   </Card>
-  <Card title="Charts & Analytics" icon="chart-pie" href="/api/analytics">
+  <Card title="Charts & Analytics" icon="chart-pie" href="/api/analytics/chart-data">
     Retrieve daily spending series and income/outcome breakdowns for visualisation.
   </Card>
   <Card title="Authentication" icon="lock" href="/api/authentication">

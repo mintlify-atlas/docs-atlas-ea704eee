@@ -1,7 +1,7 @@
 ---
-title: "POST /add_wallet — Create a New Wallet"
-sidebarTitle: "POST /add_wallet"
-description: "POST /add_wallet creates a new wallet and automatically assigns it to all existing users. Requires an active session."
+title: "POST /add_wallet — Create and Assign a New Wallet"
+sidebarTitle: "Add Wallet"
+description: "Creates a new wallet with a unique name and optional description, then links it to every registered user automatically. Requires an active session."
 ---
 
 The `POST /add_wallet` endpoint creates a new wallet and immediately links it to every existing user in the system. This means all registered users gain access to the new wallet as soon as it is created — no separate assignment step is required. The endpoint is protected by `@login_required` and accepts a JSON body describing the wallet.

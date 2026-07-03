@@ -1,5 +1,5 @@
 ---
-title: "Calendar View: Browse Spending Day by Day"
+title: "Calendar View: Browse and Filter Spending Day by Day"
 sidebarTitle: "Calendar"
 description: "The Life Cost calendar shows per-day spending totals for the current month. Click any day to load its transactions in the table below."
 ---
@@ -101,12 +101,18 @@ Intl.DateTimeFormat().resolvedOptions().timeZone
 // e.g. "America/New_York" or "Europe/Madrid"
 ```
 
-This string is sent to the server with every calendar-related request. The server uses `pytz` to localize the day's `00:00:00`–`23:59:59` boundaries in that timezone, then converts to UTC before querying the database:
+This string is sent to the server with every calendar-related request. The server uses `pytz` to pin the day's `00:00:00`–`23:59:59` boundaries in that timezone, then converts to UTC before querying the database. For the day-click endpoint (`POST /money_transfer_from_date`), the boundary calculation works as follows:
 
 ```python
 client_tz = pytz.timezone(client_time_zone)
-start_date = client_tz.localize(datetime(year, month, day, 0, 0, 0))
-end_date   = client_tz.localize(datetime(year, month, day, 23, 59, 59, 999999))
+
+if client_date.tzinfo is None:
+    client_date = client_tz.localize(client_date)
+else:
+    client_date = client_date.astimezone(client_tz)
+
+start_date = client_date.replace(hour=0, minute=0, second=0, microsecond=0)
+end_date   = client_date.replace(hour=23, minute=59, second=59, microsecond=999999)
 
 start_date_utc = start_date.astimezone(pytz.utc)
 end_date_utc   = end_date.astimezone(pytz.utc)

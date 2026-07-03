@@ -1,14 +1,14 @@
 ---
-title: "POST /add_money — Create a new money transfer"
-sidebarTitle: "POST /add_money"
-description: "Create a new MoneyTransfer for the current user's active wallet. Accepts amount, description, optional timestamp, and a list of tag names that auto-create categories."
+title: "POST /add_money — Create a New Money Transfer Record"
+sidebarTitle: "Add Transfer"
+description: "Create a new MoneyTransfer in the active wallet with amount, description, optional timestamp, and tag names auto-matched or created as categories."
 ---
 
 Create a new money transfer and associate it with the authenticated user's currently active wallet. Along with the transfer amount and description, you can supply a list of tag name strings — the server automatically looks up or creates a matching `Category` record for each name, then links it to the new transfer via a `Tag` record. If you omit `created_at`, the server defaults to the current UTC time.
 
 ## Endpoint
 
-```
+```http
 POST /add_money
 ```
 

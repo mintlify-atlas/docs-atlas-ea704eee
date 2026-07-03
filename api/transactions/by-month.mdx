@@ -1,14 +1,14 @@
 ---
-title: "POST /money_transfers — Monthly transfer summary"
-sidebarTitle: "POST /money_transfers"
-description: "Return a monthly spending summary for the user's active wallet, including per-day totals, monthly total, and two average-spend-per-day metrics computed across different time windows."
+title: "POST /money_transfers — Monthly Transfer Statistics"
+sidebarTitle: "By Month"
+description: "Return a monthly spending summary for the active wallet: per-day totals, monthly total, and two average-spend-per-day metrics for trend analysis."
 ---
 
 Return an aggregated monthly summary of money transfers for the authenticated user's active wallet. The server uses the `timeZone` and `date` you provide to identify the target calendar month, queries all transfers within that month's UTC-equivalent window, and builds a response that includes the monthly total, a per-day breakdown, and two different average-spend-per-day figures useful for trend analysis and dashboards.
 
 ## Endpoint
 
-```
+```http
 POST /money_transfers
 ```
 

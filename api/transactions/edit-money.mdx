@@ -1,24 +1,24 @@
 ---
-title: "POST /edit_money — Update an existing money transfer"
-sidebarTitle: "POST /edit_money"
-description: "Update the amount, description, and tags of an existing MoneyTransfer. All existing tags are deleted and fully replaced with the new tags array you provide."
+title: "POST /edit_money — Update an Existing Money Transfer"
+sidebarTitle: "Edit Transfer"
+description: "Update the amount, description, and tags of an existing MoneyTransfer. Existing tags are deleted and fully replaced with the new tags array you provide."
 ---
 
 Update the `amount`, `description`, and tags of an existing `MoneyTransfer` record. The update is performed atomically: all `Tag` records currently linked to the transfer are **deleted first**, and then a fresh set of `Tag` records is created from the `tags` array you supply. This means every edit is a full replacement of the tag list — partial updates are not supported.
 
-<Note>
-  Although the route handler in `app/routes/money.py` does not carry a `@login_required` decorator, the blueprint is registered in `index.py` where authentication is enforced at the application level. Always include a valid session cookie.
-</Note>
+<Warning>
+  This endpoint does **not** carry a `@login_required` decorator in `index.py`. No session cookie is required by the current server implementation. This is a known security gap — any HTTP client that can reach the server can edit any transfer by ID.
+</Warning>
 
 ## Endpoint
 
-```
+```http
 POST /edit_money
 ```
 
 ## Authentication
 
-**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow.
+**Not enforced.** The `@login_required` decorator is absent from this route in `index.py`. No session cookie is required by the current implementation.
 
 ## Request Body
 
@@ -59,7 +59,6 @@ Send a JSON object with the following fields.
 ```bash
 curl -X POST https://your-app.example.com/edit_money \
   -H "Content-Type: application/json" \
-  -H "Cookie: session=<your-session-cookie>" \
   -d '{
     "id": 42,
     "amount": -40.00,
@@ -91,6 +90,5 @@ curl -X POST https://your-app.example.com/edit_money \
 
 | Status | Body | Condition |
 |--------|------|-----------|
-| `302 Found` | — | The user is not authenticated. |
 | `404 Not Found` | `{"error": "MoneyTransfer not found"}` | No transfer exists with the given `id`. |
 | `500 Internal Server Error` | `{"error": "<exception message>"}` | A database error occurred; the session is rolled back automatically. |

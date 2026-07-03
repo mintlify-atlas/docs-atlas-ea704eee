@@ -1,7 +1,7 @@
 ---
-title: "POST /money_transfer_from_date — Transfers for a specific day"
-sidebarTitle: "POST /money_transfer_from_date"
-description: "Return all MoneyTransfer records that fall on a given local calendar day in the user's active wallet. Timezone-aware: dates are converted to UTC before querying."
+title: "POST /money_transfer_from_date — Transfers by Date"
+sidebarTitle: "By Date"
+description: "Return all MoneyTransfer records on a specific local calendar day in the active wallet. Timezone-aware: boundaries are converted to UTC for querying."
 ---
 
 Return every money transfer that occurred on a specific local calendar day within the authenticated user's active wallet. The server converts the supplied date to the client's timezone, computes the UTC-equivalent midnight-to-midnight window, and queries the database with those UTC bounds. Results are ordered by transfer ID descending (newest first) and include the same full transfer shape as the other list endpoints.
@@ -10,7 +10,7 @@ This endpoint is designed for the daily view in the Life Cost UI, where a user t
 
 ## Endpoint
 
-```
+```http
 POST /money_transfer_from_date
 ```
 

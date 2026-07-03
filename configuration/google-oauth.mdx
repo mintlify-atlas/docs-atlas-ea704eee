@@ -1,10 +1,10 @@
 ---
-title: "Configure Google OAuth for Life Cost Sign-In"
+title: "Life Cost Google OAuth: Enable Google Account Sign-In"
 sidebarTitle: "Google OAuth"
 description: "Set up Google OAuth 2.0 credentials in Google Cloud Console and configure Life Cost with your client ID and secret to enable sign-in."
 ---
 
-Life Cost uses Google OAuth 2.0 as its **only** authentication method, powered by [Flask-Dance](https://flask-dance.readthedocs.io/). There is no username/password login, no registration form, and no password-reset flow. Every user who accesses the application must sign in with a Google account, and their profile (name, email, and avatar) is fetched from Google on each login.
+Life Cost uses Google OAuth 2.0 as its **only** authentication method, powered by [Flask-Dance](https://flask-dance.readthedocs.io/). There is no username/password login, no registration form, and no password-reset flow. Every user who accesses the application must sign in with a Google account, and their profile (name, email, and avatar) is fetched from Google and stored locally on first sign-in.
 
 ## Setting Up Google Cloud Credentials
 
@@ -72,7 +72,7 @@ When a user visits Life Cost the following sequence occurs:
 2. **`GET /google_login`** — This route checks whether Flask-Dance already holds a valid Google token (`google.authorized`). If not, it redirects the browser to Google's OAuth 2.0 authorization endpoint.
 3. **Google authorization** — The user consents to the requested scopes on Google's login page and is redirected back to the application.
 4. **`GET /login/google/authorized`** — Flask-Dance intercepts this callback, exchanges the authorization code for an access token, stores it in the session, and then calls the handler registered as `redirect_to="auth.google_login"` (or `"google_login"` in the standalone `index.py` entry point).
-5. **User record upsert** — The handler fetches profile data from the Google userinfo endpoint and either creates a new `User` row or updates the existing one.
+5. **User record upsert** — The handler fetches profile data from the Google userinfo endpoint and creates a new `User` row if none exists for that email, or locates the existing record to log in.
 6. **`GET /`** — Flask-Login logs the user in and redirects them to the main dashboard.
 
 ## OAuth Scopes
@@ -106,11 +106,11 @@ app.register_blueprint(google_bp, url_prefix="/login")
 When a Google account signs in for the first time (no matching `email` found in the `user` table), the application:
 
 1. Creates a new `User` record populated with `username`, `email`, and `picture` from the Google profile response.
-2. Calls `set_user_wallets(user)`, which fetches all existing `Wallet` rows and appends them to the new user's `wallets` relationship, setting `last_visited_wallet_id` to the first wallet found.
+2. Fetches all existing `Wallet` rows and appends them to the new user's `wallets` relationship, setting `last_visited_wallet_id` to the first wallet found.
 3. Commits the new user and their wallet associations to the database.
 4. Calls `login_user(user)` to start the Flask-Login session.
 
-On subsequent logins the existing record is located by email, and `username` and `picture` are refreshed from the latest Google profile data.
+On subsequent logins the existing record is located by email and the user is logged in directly — `username` and `picture` are not updated from the Google profile on re-login.
 
 <Warning>
   **`OAUTHLIB_INSECURE_TRANSPORT` is set to `'1'` in the application source code.** This flag allows Flask-Dance to initiate the OAuth flow over plain HTTP, which is intentional for local development:
