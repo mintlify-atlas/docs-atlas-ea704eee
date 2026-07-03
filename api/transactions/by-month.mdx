@@ -1,0 +1,115 @@
+---
+title: "POST /money_transfers — Monthly transfer summary"
+sidebarTitle: "POST /money_transfers"
+description: "Return a monthly spending summary for the user's active wallet, including per-day totals, monthly total, and two average-spend-per-day metrics computed across different time windows."
+---
+
+Return an aggregated monthly summary of money transfers for the authenticated user's active wallet. The server uses the `timeZone` and `date` you provide to identify the target calendar month, queries all transfers within that month's UTC-equivalent window, and builds a response that includes the monthly total, a per-day breakdown, and two different average-spend-per-day figures useful for trend analysis and dashboards.
+
+## Endpoint
+
+```
+POST /money_transfers
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow.
+
+## Request Body
+
+<ParamField body="timeZone" type="string" required>
+  An IANA timezone identifier (e.g. `"Europe/Madrid"`, `"America/Chicago"`). Defines the local calendar used to determine month boundaries, which are then converted to UTC for the database query and for grouping transfers into per-day buckets.
+</ParamField>
+
+<ParamField body="date" type="string" required>
+  An ISO 8601 date-time string representing any moment within the target month (e.g. `"2024-01-01T00:00:00Z"`). Only the month and year of this value are used — the specific day and time do not affect results.
+</ParamField>
+
+## Response
+
+A single JSON object with the following fields.
+
+<ResponseField name="month" type="integer">
+  The calendar month number (1 = January … 12 = December) of the summary.
+</ResponseField>
+
+<ResponseField name="year" type="integer">
+  The four-digit calendar year of the summary.
+</ResponseField>
+
+<ResponseField name="mean" type="float">
+  **All-time average spend per day.** Calculated as `total_all_time_amount / days_since_oldest_transfer` across the entire wallet history. Returns `0` if there are no transfers or if the oldest transfer was created today (zero-day window). Useful as a long-term baseline.
+</ResponseField>
+
+<ResponseField name="mean_month" type="float">
+  **This-month average spend per day.** Calculated as `total_month_amount / days_in_month` for the requested month. Returns `0` if there are no transfers in the month. Useful for comparing the current month's pace to the long-term baseline.
+</ResponseField>
+
+<ResponseField name="total_amount" type="float">
+  The sum of all transfer amounts in the requested month. Negative values dominate when expenses exceed income.
+</ResponseField>
+
+<ResponseField name="days" type="array">
+  An array of per-day summary objects. Only days that have at least one transfer are included — days with no activity are omitted.
+
+  <Expandable title="Day object fields">
+    <ResponseField name="day" type="integer">
+      The day-of-month integer (1–31).
+    </ResponseField>
+    <ResponseField name="total_amount" type="float">
+      Sum of all transfer amounts for this day within the requested month.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<Note>
+  The `days` array is not guaranteed to be sorted. The order depends on the iteration order of the internal `daily_totals` dictionary built from the query results. Sort client-side by `day` if you need ascending order.
+</Note>
+
+## Example Request
+
+```bash
+curl -X POST https://your-app.example.com/money_transfers \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=<your-session-cookie>" \
+  -d '{
+    "timeZone": "Europe/Madrid",
+    "date": "2024-01-01T00:00:00Z"
+  }'
+```
+
+## Example Request Body
+
+```json
+{
+  "timeZone": "Europe/Madrid",
+  "date": "2024-01-01T00:00:00Z"
+}
+```
+
+## Example Response
+
+```json
+{
+  "month": 1,
+  "year": 2024,
+  "mean": -12.45,
+  "mean_month": -14.20,
+  "total_amount": -440.20,
+  "days": [
+    {"day": 1,  "total_amount": -3200.00},
+    {"day": 15, "total_amount": -35.50},
+    {"day": 20, "total_amount": -85.00},
+    {"day": 28, "total_amount": -119.70}
+  ]
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `302 Found` | The user is not authenticated. |
+| `400 Bad Request` | The request body is missing `date` or `timeZone`, or `date` is not a valid ISO 8601 string. |
+| `500 Internal Server Error` | `timeZone` is not a recognised IANA identifier or a database error occurred. |

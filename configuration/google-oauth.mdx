@@ -1,0 +1,131 @@
+---
+title: "Configure Google OAuth for Life Cost Sign-In"
+sidebarTitle: "Google OAuth"
+description: "Set up Google OAuth 2.0 credentials in Google Cloud Console and configure Life Cost with your client ID and secret to enable sign-in."
+---
+
+Life Cost uses Google OAuth 2.0 as its **only** authentication method, powered by [Flask-Dance](https://flask-dance.readthedocs.io/). There is no username/password login, no registration form, and no password-reset flow. Every user who accesses the application must sign in with a Google account, and their profile (name, email, and avatar) is fetched from Google on each login.
+
+## Setting Up Google Cloud Credentials
+
+<Steps>
+  <Step title="Create or select a Google Cloud project">
+    Go to the [Google Cloud Console](https://console.cloud.google.com/) and either create a new project (e.g., `life-cost`) or select an existing one from the project dropdown at the top of the page.
+  </Step>
+
+  <Step title="Enable the required APIs">
+    Navigate to **APIs & Services → Library** and enable the following APIs for your project:
+
+    - **Google People API** — provides access to user profile information
+    - **Google Identity / OpenID Connect** — used for the `openid` scope
+
+    Use the search bar to find each API, click it, and press **Enable**.
+  </Step>
+
+  <Step title="Create an OAuth 2.0 Client ID credential">
+    Go to **APIs & Services → Credentials** and click **+ Create Credentials → OAuth 2.0 Client ID**.
+
+    If this is your first credential in the project you may be prompted to configure the **OAuth consent screen** first. Fill in the required fields (app name, support email, scopes) and save before proceeding.
+  </Step>
+
+  <Step title="Set the application type to Web application">
+    On the credential creation form, select **Web application** as the application type. Give it a descriptive name (e.g., `Life Cost Web`).
+  </Step>
+
+  <Step title="Add the authorised redirect URI">
+    Under **Authorised redirect URIs**, click **+ Add URI** and enter the callback URL that Flask-Dance listens on:
+
+    ```
+    http://your-domain:port/login/google/authorized
+    ```
+
+    For local development this is typically:
+
+    ```
+    http://localhost:5000/login/google/authorized
+    ```
+
+    The path `/login/google/authorized` is fixed by Flask-Dance when the Google blueprint is registered with `url_prefix="/login"`.
+
+    <Note>
+      The redirect URI must **exactly** match what you register here, including the protocol (`http` vs `https`), the hostname, and the port. Even a trailing slash difference will cause Google to reject the callback with a `redirect_uri_mismatch` error.
+    </Note>
+  </Step>
+
+  <Step title="Copy credentials into your .env file">
+    After saving, Google Cloud Console displays your new **Client ID** and **Client Secret**. Copy both values into your `.env` file:
+
+    ```env
+    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-client-secret
+    ```
+
+    Keep the client secret out of version control. If you accidentally commit it, rotate it immediately in Google Cloud Console.
+  </Step>
+</Steps>
+
+## OAuth Flow Walkthrough
+
+When a user visits Life Cost the following sequence occurs:
+
+1. **`GET /`** — The index route checks `current_user.is_authenticated`. If the user is not logged in, they are redirected to `/google_login`.
+2. **`GET /google_login`** — This route checks whether Flask-Dance already holds a valid Google token (`google.authorized`). If not, it redirects the browser to Google's OAuth 2.0 authorization endpoint.
+3. **Google authorization** — The user consents to the requested scopes on Google's login page and is redirected back to the application.
+4. **`GET /login/google/authorized`** — Flask-Dance intercepts this callback, exchanges the authorization code for an access token, stores it in the session, and then calls the handler registered as `redirect_to="auth.google_login"` (or `"google_login"` in the standalone `index.py` entry point).
+5. **User record upsert** — The handler fetches profile data from the Google userinfo endpoint and either creates a new `User` row or updates the existing one.
+6. **`GET /`** — Flask-Login logs the user in and redirects them to the main dashboard.
+
+## OAuth Scopes
+
+The application requests the following scopes when redirecting to Google:
+
+| Scope                                              | Purpose                                      |
+|----------------------------------------------------|----------------------------------------------|
+| `https://www.googleapis.com/auth/userinfo.email`   | Read the user's Google account email address |
+| `https://www.googleapis.com/auth/userinfo.profile` | Read the user's name and profile picture URL |
+| `openid`                                           | Standard OpenID Connect identity token       |
+
+These scopes are configured in `app/main.py`:
+
+```python
+google_bp = make_google_blueprint(
+    client_id=os.getenv("GOOGLE_CLIENT_ID"),
+    client_secret=os.getenv("GOOGLE_CLIENT_SECRET"),
+    redirect_to="auth.google_login",
+    scope=[
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "openid"
+    ]
+)
+app.register_blueprint(google_bp, url_prefix="/login")
+```
+
+## What Happens on First Login
+
+When a Google account signs in for the first time (no matching `email` found in the `user` table), the application:
+
+1. Creates a new `User` record populated with `username`, `email`, and `picture` from the Google profile response.
+2. Calls `set_user_wallets(user)`, which fetches all existing `Wallet` rows and appends them to the new user's `wallets` relationship, setting `last_visited_wallet_id` to the first wallet found.
+3. Commits the new user and their wallet associations to the database.
+4. Calls `login_user(user)` to start the Flask-Login session.
+
+On subsequent logins the existing record is located by email, and `username` and `picture` are refreshed from the latest Google profile data.
+
+<Warning>
+  **`OAUTHLIB_INSECURE_TRANSPORT` is set to `'1'` in the application source code.** This flag allows Flask-Dance to initiate the OAuth flow over plain HTTP, which is intentional for local development:
+
+  ```python
+  os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+  ```
+
+  Over HTTP, OAuth tokens are transmitted in plain text and are vulnerable to interception. **Before deploying to production**, ensure that:
+
+  - The application is served exclusively over HTTPS (e.g., via an nginx or Caddy reverse proxy with a valid TLS certificate).
+  - This line is removed from the source, or the environment variable is explicitly unset in your production environment.
+  - The redirect URI registered in Google Cloud Console uses `https://`.
+</Warning>
+
+<Note>
+  The authorized redirect URI registered in Google Cloud Console must exactly match the URI the app sends during the OAuth flow — including the protocol (`http` or `https`), hostname, port, and path. A mismatch results in a `400: redirect_uri_mismatch` error from Google. If you change the domain, port, or switch from HTTP to HTTPS, update the URI in Google Cloud Console as well.
+</Note>

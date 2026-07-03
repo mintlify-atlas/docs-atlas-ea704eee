@@ -1,0 +1,78 @@
+---
+title: "POST /add_wallet — Create a New Wallet"
+sidebarTitle: "POST /add_wallet"
+description: "POST /add_wallet creates a new wallet and automatically assigns it to all existing users. Requires an active session."
+---
+
+The `POST /add_wallet` endpoint creates a new wallet and immediately links it to every existing user in the system. This means all registered users gain access to the new wallet as soon as it is created — no separate assignment step is required. The endpoint is protected by `@login_required` and accepts a JSON body describing the wallet.
+
+## Method & Path
+
+```
+POST /add_wallet
+```
+
+## Authentication
+
+This endpoint requires an active login session. Requests without a valid session cookie are rejected and redirected to the login flow. Session cookies are issued automatically upon successful Google OAuth sign-in.
+
+## Request Body
+
+The request body must be valid JSON with the `Content-Type: application/json` header set.
+
+<ParamField body="name" type="string" required>
+  The display name for the new wallet. Must be unique across all wallets in the database — a duplicate name will cause a database constraint error. Maximum 150 characters, as defined by the `Wallet.name` column (`db.String(150), unique=True, nullable=False`).
+</ParamField>
+
+<ParamField body="description" type="string">
+  An optional human-readable description of the wallet's purpose or contents. Omitting this field or passing `null` is acceptable. Maximum 300 characters, as defined by the `Wallet.description` column (`db.String(300)`).
+</ParamField>
+
+## Behavior
+
+After inserting the new `Wallet` row and committing the initial transaction, the handler queries all `User` records and appends the new wallet to each user's `wallets` relationship. This relationship is backed by the `user_wallet` association table, which records the `user_id`, `wallet_id`, and a `created_at` timestamp for each pairing. A second `db.session.commit()` persists all of these associations in one batch.
+
+<Note>
+  Because all existing users are linked automatically, any user who is already registered at the time of wallet creation will see the new wallet appear in their wallet selector immediately — no further API calls are needed.
+</Note>
+
+## Example Request
+
+```bash
+curl -X POST https://your-app.example.com/add_wallet \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=<your-session-cookie>" \
+  -d '{
+    "name": "Travel Fund",
+    "description": "Budget for flights, hotels, and activities"
+  }'
+```
+
+## Example Request Body
+
+```json
+{
+  "name": "Travel Fund",
+  "description": "Budget for flights, hotels, and activities"
+}
+```
+
+## Example Response
+
+```json
+{
+  "message": "Wallet added"
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `200 OK` | Wallet created and associated with all users successfully. |
+| `401 Unauthorized` | The request was made without an authenticated session. The server redirects to the Google login flow. |
+| `500 Internal Server Error` | A database error occurred — most commonly a unique constraint violation if a wallet with the given `name` already exists. |
+
+<Warning>
+  Wallet names must be globally unique. Attempting to create a wallet whose `name` already exists in the database will trigger a SQLAlchemy `IntegrityError` and return a `500` response. Validate uniqueness on the client side or catch the error and present a meaningful message to the user.
+</Warning>

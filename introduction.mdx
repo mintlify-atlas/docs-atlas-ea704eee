@@ -1,0 +1,61 @@
+---
+title: "Life Cost: Personal Finance Tracker for Every Day"
+sidebarTitle: "Introduction"
+description: "Life Cost is a Flask-based web app for tracking daily income and expenses across shared wallets, with Google OAuth login, tags, and visual analytics."
+---
+
+Life Cost is a self-hosted personal finance web application built with Flask and Python 3.10+. It helps individuals and households record daily income and expenses across multiple shared wallets, categorise transactions with tags, and visualise spending patterns through charts and a calendar view — all without relying on any third-party cloud service.
+
+## Architecture Overview
+
+Life Cost follows a straightforward server-rendered + API hybrid architecture:
+
+- **Backend:** Python 3.10+ with [Flask](https://flask.palletsprojects.com/), exposing a REST-style JSON API for all data operations.
+- **Database:** MySQL 8.0 accessed through [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/). The ORM models map directly to MySQL tables and are created automatically on first startup via `db.create_all()`.
+- **Authentication:** [Flask-Dance](https://flask-dance.readthedocs.io/) handles the Google OAuth 2.0 flow. [Flask-Login](https://flask-login.readthedocs.io/) manages session state after the OAuth handshake.
+- **Frontend:** A single-page HTML interface served from Flask's `templates/` folder, enhanced with jQuery for async API calls, calendar rendering, and chart visualisation.
+- **Deployment:** The app ships as a Docker image (`akevalion/life:0.0.9.Release`) and is orchestrated with Docker Compose alongside a MySQL 8.0 service and an optional phpMyAdmin container.
+
+## Data Model Overview
+
+All application state lives in five SQLAlchemy models:
+
+| Model | Purpose |
+|---|---|
+| `User` | Stores Google-authenticated users (name, email, profile picture, last active wallet). |
+| `Wallet` | A named container for transactions; multiple users can share a wallet via the `user_wallet` association table. |
+| `MoneyTransfer` | A single income or expense entry — amount (positive = expense, negative = income), description, timestamp, and owning wallet. |
+| `Category` | A reusable label (with optional parent category) used to classify transactions. |
+| `Tag` | A join record linking a `MoneyTransfer` to a `Category`, enabling each transaction to carry multiple tags. |
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Wallet Support" icon="wallet">
+    Create multiple named wallets and share them across users. Each user tracks their last active wallet so context switches are instant.
+  </Card>
+  <Card title="Google Sign-In" icon="google">
+    One-click authentication via Google OAuth 2.0 — no passwords to manage. New users are provisioned automatically and assigned to all existing wallets.
+  </Card>
+  <Card title="Transaction Logging with Tags" icon="tags">
+    Record income and expense entries with a description, amount, custom date, and one or more category tags. Edit or delete entries at any time.
+  </Card>
+  <Card title="Calendar View" icon="calendar">
+    Browse transactions day by day on an interactive calendar. Click any date to see the full list of entries for that day.
+  </Card>
+  <Card title="Charts & Analytics" icon="chart-pie">
+    View a daily spending timeline chart and an income-vs-outcome pie chart, both scoped to the currently active wallet and respecting the user's local timezone.
+  </Card>
+  <Card title="Docker Deployment" icon="docker">
+    Ship the entire stack — app, MySQL, and phpMyAdmin — with a single `docker-compose up` command. No external infrastructure required.
+  </Card>
+</CardGroup>
+
+<Note>
+  Life Cost is designed to be **self-hosted**. All your financial data stays on your own server or machine — no cloud account, subscription, or third-party data storage is involved.
+</Note>
+
+## Next Steps
+
+- [Quickstart](/quickstart) — Run Life Cost locally in under five minutes using Docker Compose.
+- [API Reference](/api/overview) — Explore the full list of JSON endpoints for wallets, transactions, tags, and analytics.

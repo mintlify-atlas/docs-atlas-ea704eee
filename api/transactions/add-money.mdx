@@ -1,0 +1,88 @@
+---
+title: "POST /add_money — Create a new money transfer"
+sidebarTitle: "POST /add_money"
+description: "Create a new MoneyTransfer for the current user's active wallet. Accepts amount, description, optional timestamp, and a list of tag names that auto-create categories."
+---
+
+Create a new money transfer and associate it with the authenticated user's currently active wallet. Along with the transfer amount and description, you can supply a list of tag name strings — the server automatically looks up or creates a matching `Category` record for each name, then links it to the new transfer via a `Tag` record. If you omit `created_at`, the server defaults to the current UTC time.
+
+## Endpoint
+
+```
+POST /add_money
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow. Unauthenticated requests are redirected to `/google_login`.
+
+## Request Body
+
+Send a JSON object with the following fields.
+
+<ParamField body="amount" type="float" required>
+  The transfer amount. Use a negative number for an expense and a positive number for income (e.g. `-35.50` or `120.00`).
+</ParamField>
+
+<ParamField body="description" type="string" required>
+  A short human-readable label for the transfer (max 200 characters).
+</ParamField>
+
+<ParamField body="tags" type="array" required>
+  An array of tag name strings (e.g. `["food", "supermarket"]`). For each name the server finds or creates a `Category` record with that name, then creates a `Tag` linking the category to the new transfer. Pass an empty array `[]` if no tags are needed.
+</ParamField>
+
+<ParamField body="created_at" type="string">
+  An optional ISO 8601 timestamp for the transfer (e.g. `"2024-01-15T10:30:00Z"`). Parsed with `dateutil.parser` — any timezone offset is respected. If this field is omitted or unparseable, the server defaults to `datetime.utcnow()`.
+</ParamField>
+
+<Note>
+  Tag names are matched case-sensitively against existing `Category.name` values. If no category with the given name exists it is created automatically with `category_parent=None` and `number_of_operation=0`. This means the same tag name submitted on multiple transfers will always resolve to the same category.
+</Note>
+
+## Response
+
+<ResponseField name="message" type="string">
+  `"MoneyTransfer added successfully"` on success.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://your-app.example.com/add_money \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=<your-session-cookie>" \
+  -d '{
+    "amount": -35.50,
+    "description": "Weekly groceries",
+    "tags": ["food", "supermarket"],
+    "created_at": "2024-01-15T10:30:00Z"
+  }'
+```
+
+## Example Request Body
+
+```json
+{
+  "amount": -35.50,
+  "description": "Weekly groceries",
+  "tags": ["food", "supermarket"],
+  "created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+## Example Response
+
+```json
+{
+  "message": "MoneyTransfer added successfully"
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `302 Found` | The user is not authenticated. |
+| `400 Bad Request` | The request body is not valid JSON or a required field (`amount`, `description`, `tags`) is missing. |
+| `500 Internal Server Error` | A database error occurred while saving the transfer or its tags. |

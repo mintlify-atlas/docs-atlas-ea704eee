@@ -1,0 +1,131 @@
+---
+title: "Life Cost REST API Overview"
+sidebarTitle: "Overview"
+description: "Life Cost exposes a JSON REST API for wallets, transactions, categories, tags, and analytics. All endpoints use session-based authentication via Google OAuth."
+---
+
+Life Cost is a personal finance web application built with Flask and SQLAlchemy. Its backend exposes a REST API that the built-in frontend uses to manage wallets, record money transfers, organise transactions with categories and tags, and retrieve analytics data. All state is scoped to the authenticated user's **last visited wallet**, which means most data-returning endpoints automatically filter results by the wallet the user most recently viewed.
+
+## Base URL
+
+There is no version prefix. All endpoints are served directly from the application root:
+
+```
+http://<host>:<port>
+```
+
+The default development port is **3000** (as set in `index.py`). When deploying with Docker or a reverse proxy, map to whatever external port suits your setup.
+
+```
+# Example — local development
+http://localhost:3000
+
+# Example — production behind a reverse proxy
+https://your-domain.com
+```
+
+## Authentication
+
+All protected endpoints rely on a **Flask-Login session cookie** obtained after completing the Google OAuth 2.0 flow. There are no API keys or Bearer tokens. See the [Authentication](/api/authentication) page for the full flow.
+
+Requests to `@login_required` endpoints that are made **without** a valid session cookie are met with an HTTP **302 redirect** to `/google_login` — not a JSON `401` response.
+
+## Content-Type
+
+Any request that sends a body (all `POST` endpoints) must include the header:
+
+```http
+Content-Type: application/json
+```
+
+## Endpoints
+
+### Wallets
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/wallet/<id>` | ✅ | Fetch a single wallet by ID |
+| `POST` | `/add_wallet` | ✅ | Create a new wallet and associate it with all existing users |
+| `POST` | `/update_last_visited_wallet` | ✅ | Set the current user's active (last visited) wallet |
+
+### Users
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/user/<id>` | ❌ | Fetch a single user record by ID |
+| `GET` | `/profile` | ✅ | Return the authenticated user's profile (name, email, avatar) |
+
+### Categories
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/category/<id>` | ❌ | Fetch a single category by ID |
+| `POST` | `/add_category` | ❌ | Create a new category |
+
+### Tags
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/tag/<id>` | ❌ | Fetch a single tag by ID |
+| `POST` | `/add_tag` | ❌ | Create a new tag linking a category to a money transfer |
+| `DELETE` | `/remove_tag/<id>` | ❌ | Delete a tag by ID |
+
+### Transactions (Money Transfers)
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/money/<id>` | ✅ | Fetch a single money transfer by ID |
+| `POST` | `/add_money` | ✅ | Record a new money transfer in the active wallet |
+| `POST` | `/edit_money` | ❌ | Update an existing money transfer and replace its tags |
+| `DELETE` | `/remove_money/<id>` | ❌ | Delete a money transfer and all its associated tags |
+| `GET` | `/last_money_transfers/<limit>` | ✅ | Return the `<limit>` most recent transfers in the active wallet |
+| `GET` | `/money_transfers_by_category/<category_id>` | ✅ | Return all transfers tagged with a given category |
+| `POST` | `/money_transfer_from_date` | ✅ | Return transfers for a specific calendar day (client timezone-aware) |
+| `POST` | `/money_transfers` | ✅ | Return transfers for a full month with daily totals and averages |
+
+### Charts & Analytics
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `POST` | `/chart_data` | ✅ | Return daily spending totals for all time (for a line/bar chart) |
+| `POST` | `/pi_data` | ✅ | Return total income vs. total expenditure (for a pie chart) |
+
+### Auth & Views
+
+| Method | Path | Auth Required | Description |
+|--------|------|:-------------:|-------------|
+| `GET` | `/google_login` | ❌ | Entry point for the Google OAuth flow |
+| `GET` | `/logout` | ✅ | Log out the current user and redirect to `/` |
+| `GET` | `/` | ❌ | Home page — renders the app if authenticated, otherwise redirects to `/google_login` |
+| `GET` | `/privacy` | ❌ | Privacy policy page |
+| `GET` | `/terms` | ❌ | Terms of service page |
+
+## Error Handling
+
+| Scenario | Behaviour |
+|----------|-----------|
+| Unauthenticated request to a `@login_required` route | HTTP `302` redirect to `/google_login` |
+| Resource not found (e.g. unknown wallet/transfer ID) | HTTP `404` (Flask's default `get_or_404`) |
+| Database write failure | HTTP `500` with a JSON `{"message": "Error while adding …"}` body |
+| Missing required JSON field | Typically an unhandled `KeyError` — ensure all required fields are present |
+
+<Note>
+  The Life Cost API is designed primarily for use by its own browser-based frontend. Authentication relies on browser session cookies managed by Flask-Login — **no API key or Bearer token mechanism is supported**. Automated or server-to-server clients must replicate the full browser OAuth cookie flow to authenticate.
+</Note>
+
+## Explore by Resource
+
+<CardGroup cols={2}>
+  <Card title="Wallets" icon="wallet" href="/api/wallets">
+    Create and manage spending wallets. Set the active wallet context used by all transaction and analytics endpoints.
+  </Card>
+  <Card title="Transactions" icon="money-bill-transfer" href="/api/transactions">
+    Add, edit, delete, and query money transfers with full tag and category support.
+  </Card>
+  <Card title="Charts & Analytics" icon="chart-pie" href="/api/analytics">
+    Retrieve daily spending series and income/outcome breakdowns for visualisation.
+  </Card>
+  <Card title="Authentication" icon="lock" href="/api/authentication">
+    Understand the Google OAuth 2.0 session-cookie flow required to access protected endpoints.
+  </Card>
+</CardGroup>

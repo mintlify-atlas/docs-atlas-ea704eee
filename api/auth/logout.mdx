@@ -1,0 +1,44 @@
+---
+title: "GET /logout — End the Current User Session"
+sidebarTitle: "GET /logout"
+description: "GET /logout calls Flask-Login's logout_user() to clear the session cookie and redirects the user to the home page."
+---
+
+The `/logout` endpoint terminates the current user's authenticated session. It delegates to Flask-Login's `logout_user()` function, which clears the session cookie from the browser, then issues an HTTP redirect to the application root. This is a standard browser-navigation endpoint — it does not return a JSON body.
+
+## Authentication
+
+`@login_required` is enforced. Unauthenticated requests (e.g. from a user who has already logged out or whose session has expired) are automatically redirected by Flask-Login's `unauthorized_handler` before the route logic runs.
+
+## Behavior
+
+1. Calls `logout_user()` to invalidate the current session and remove the session cookie.
+2. Issues an HTTP `302` redirect to `/` (the `index` route).
+
+## Response
+
+There is no JSON response body. The endpoint always returns an HTTP redirect. Client applications should follow the redirect or simply navigate the browser to the logout URL.
+
+## Example
+
+Because this is a redirect endpoint, the simplest way to log out is plain browser navigation:
+
+```bash
+# Follow redirects to observe the full flow
+curl -L https://your-domain.com/logout \
+  --cookie "session=<your-session-cookie>"
+```
+
+Or link directly from the frontend:
+
+```html
+<a href="/logout">Sign out</a>
+```
+
+<Note>
+  After logout, the browser is redirected to `/`. Because the session cookie has been cleared, the `index` route immediately redirects the now-unauthenticated visitor to `/google_login`, effectively returning them to the sign-in screen.
+</Note>
+
+<Warning>
+  This endpoint must be reached via a `GET` request from an authenticated session. Calling it without a valid session cookie will trigger a redirect to the login flow rather than executing the logout logic.
+</Warning>

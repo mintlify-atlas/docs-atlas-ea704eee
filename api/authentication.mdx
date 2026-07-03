@@ -1,0 +1,163 @@
+---
+title: "Authenticate with the Life Cost API"
+sidebarTitle: "Authentication"
+description: "Life Cost uses Google OAuth 2.0 and Flask-Login session cookies for authentication. Browser-based flow only — no API key or Bearer token is supported."
+---
+
+Life Cost authenticates users exclusively through **Google OAuth 2.0** via [Flask-Dance](https://flask-dance.readthedocs.io/). After a successful OAuth exchange, Flask-Login writes a server-side session and sets a signed session cookie in the browser. Every subsequent request to a protected endpoint carries that cookie automatically — no manual token management is required in a normal browser context.
+
+## How It Works
+
+When a user visits the application without an active session, they are sent through the Google OAuth consent screen. Once consent is granted, Google calls back to the application, which looks up (or creates) the matching user record by email, then calls `login_user()`. From that point on, Flask-Login reads the session cookie on every request to determine `current_user`.
+
+All wallet-scoped data (transactions, analytics, etc.) is automatically filtered by `current_user.last_visited_wallet_id`, so the session context controls not just authentication but also which wallet's data is returned.
+
+## Auth Flow Step-by-Step
+
+<Steps>
+  <Step title="Visit the home page">
+    The browser requests `GET /`. If `current_user.is_authenticated` is `False`, the view immediately issues a redirect to `/google_login`.
+
+    ```http
+    GET / HTTP/1.1
+    Host: localhost:3000
+    ```
+  </Step>
+
+  <Step title="Entry point — /google_login">
+    `GET /google_login` checks whether Flask-Dance has a stored Google token (`google.authorized`). If not, it redirects the browser to the Google OAuth consent screen via Flask-Dance's internal `url_for("google.login")` helper.
+
+    ```python
+    # auth.py (simplified)
+    @auth_bp.route("/google_login")
+    def google_login():
+        if not google.authorized:
+            return redirect(url_for("google.login"))
+        ...
+    ```
+  </Step>
+
+  <Step title="Google OAuth consent screen">
+    The browser is sent to Google with the scopes:
+    - `https://www.googleapis.com/auth/userinfo.email`
+    - `https://www.googleapis.com/auth/userinfo.profile`
+    - `openid`
+
+    The user signs in and grants consent.
+  </Step>
+
+  <Step title="OAuth callback — /login/google/authorized">
+    Google redirects the browser back to the Flask-Dance callback URL:
+
+    ```
+    GET /login/google/authorized?code=...&state=...
+    ```
+
+    Flask-Dance exchanges the authorisation code for an access token and stores it in the session, then redirects to the `redirect_to` target — which is configured as `auth.google_login` (the same `/google_login` route).
+  </Step>
+
+  <Step title="User lookup or creation">
+    Back in `/google_login`, `google.authorized` is now `True`. The handler calls the Google userinfo API to retrieve `name`, `email`, and `picture`.
+
+    - If a `User` row with that email already exists, the username and picture are refreshed.
+    - If no row exists, a new `User` is created, all existing wallets are associated with the account, and `last_visited_wallet_id` is set to the first available wallet.
+
+    ```python
+    resp = google.get("https://www.googleapis.com/oauth2/v1/userinfo")
+    user_info = resp.json()
+
+    user = User.query.filter_by(email=user_info["email"]).first()
+    if not user:
+        user = User(
+            username=user_info["name"],
+            email=user_info["email"],
+            picture=user_info["picture"]
+        )
+        wallets = Wallet.query.all()
+        if wallets:
+            user.wallets.extend(wallets)
+            user.last_visited_wallet_id = wallets[0].id
+        db.session.add(user)
+
+    db.session.commit()
+    login_user(user)
+    ```
+  </Step>
+
+  <Step title="Session cookie set — redirected home">
+    `login_user(user)` writes the user's ID into the Flask session. Flask serialises and signs the session as a cookie (`session`) and sends it back to the browser.
+
+    ```http
+    HTTP/1.1 302 Found
+    Location: /
+    Set-Cookie: session=<signed-value>; HttpOnly; Path=/
+    ```
+
+    From this point forward, every browser request includes the cookie and Flask-Login resolves `current_user` automatically.
+  </Step>
+</Steps>
+
+## Session Persistence
+
+The session cookie is tied to the browser that completed the OAuth flow. It persists until one of the following occurs:
+
+- The user explicitly logs out via `GET /logout`.
+- The browser storage is cleared (cookies deleted).
+- The server is restarted with a new `SECRET_KEY` (which invalidates all existing signed cookies — note that the current implementation generates a random key on every startup with `os.urandom(24)`, so sessions do not survive restarts by default).
+
+If the cookie is lost for any reason, the user must complete the full Google OAuth flow again.
+
+<Warning>
+  The Life Cost API does **not** support API keys, Bearer tokens, or any other stateless authentication mechanism. It is designed exclusively for browser-based access using Flask-Login session cookies. Server-to-server or programmatic integration is not natively supported — an automated client would need to replicate the full browser OAuth cookie handshake, which is not a recommended or supported pattern.
+</Warning>
+
+## Logging Out
+
+Sending a browser request to `GET /logout` calls `logout_user()`, which clears the session, and then redirects to `/`.
+
+```http
+GET /logout HTTP/1.1
+Host: localhost:3000
+Cookie: session=<signed-value>
+```
+
+**Response:**
+
+```http
+HTTP/1.1 302 Found
+Location: /
+Set-Cookie: session=; Expires=Thu, 01 Jan 1970 00:00:00 GMT
+```
+
+The endpoint is itself `@login_required` — unauthenticated requests are redirected to `/google_login` before the logout logic runs.
+
+## Unauthenticated Requests
+
+<Note>
+  Endpoints decorated with `@login_required` do **not** return a JSON `401 Unauthorized` response when the session is absent. Instead, Flask-Login issues an HTTP `302` redirect to `/google_login`. Clients that do not follow redirects will receive a `302` with a `Location: /google_login` header and an empty body — not an error payload.
+</Note>
+
+If you are building a non-browser client and encounter unexpected `302` redirects, verify that:
+1. A valid session cookie obtained from a completed OAuth flow is present in the request.
+2. The cookie domain and path match the request URL.
+3. The server has not been restarted since the cookie was issued (which would have rotated the `SECRET_KEY`).
+
+## Configuration Reference
+
+The following environment variables control the OAuth integration and must be set before starting the application:
+
+| Variable | Description |
+|----------|-------------|
+| `GOOGLE_CLIENT_ID` | OAuth 2.0 client ID from the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) |
+| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 client secret from the Google Cloud Console |
+| `DATABASE_URL` | SQLAlchemy-compatible database connection string |
+
+The OAuth callback URI registered in the Google Cloud Console must match:
+
+```
+http://<host>:<port>/login/google/authorized
+```
+
+<Tip>
+  During local development, Flask-Dance sets `OAUTHLIB_INSECURE_TRANSPORT=1` automatically, which allows OAuth over plain HTTP. In production, always serve the application behind HTTPS and remove or do not set this variable.
+</Tip>

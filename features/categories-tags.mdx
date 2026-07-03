@@ -1,0 +1,148 @@
+---
+title: "Categories and Tags for Transaction Organization"
+sidebarTitle: "Categories & Tags"
+description: "Organize Life Cost transactions using tags that map to categories. Tags are created automatically when you type them into the transaction form."
+---
+
+Life Cost organizes transactions through a two-layer system: **Categories** hold the named labels you care about (e.g. `food`, `transport`, `salary`), and **Tags** are the join records that attach a category to a specific transaction. Because tags are typed as free-form text in the transaction form, you never need to pre-configure a category list — the system creates missing categories on the fly.
+
+## How Tags Work
+
+Each transaction can have **one or more tags**. When adding or editing a transaction, you type tag names as a comma-separated list in the Tags cell of the editable row:
+
+```
+food, supermarket, organic
+```
+
+The client splits the string on commas, trims whitespace, and sends the resulting array to the server in the `tags` field of the request body. On the server, each name in the array is looked up in the `Category` table. If a matching row already exists it is reused; if not, a new `Category` is inserted automatically.
+
+## Auto-Creation of Categories
+
+Category auto-creation happens inside both `add_money` and `edit_money`:
+
+```python
+for tag_name in data["tags"]:
+    category = Category.query.filter_by(name=tag_name).first()
+
+    if not category:
+        category = Category(
+            name=tag_name,
+            category_parent=None,
+            number_of_operation=0
+        )
+        db.session.add(category)
+        db.session.flush()          # obtain the new category.id before inserting the Tag
+
+    new_tag = Tag(category_id=category.id, money_transfer_id=<transfer_id>)
+    db.session.add(new_tag)
+
+db.session.commit()
+```
+
+`db.session.flush()` is used — rather than `commit()` — so the new category's auto-generated `id` is available immediately for the subsequent `Tag` insert, while keeping both writes in the same transaction.
+
+<Note>
+  Category names are matched by exact string equality (`filter_by(name=tag_name)`). `Food` and `food` would be treated as two separate categories. Keep naming consistent across transactions for accurate filtering.
+</Note>
+
+## Category Model
+
+```python
+class Category(db.Model):
+    id                 = db.Column(db.Integer, primary_key=True)
+    name               = db.Column(db.String(200), nullable=False)
+    category_parent    = db.Column(db.Integer)
+    number_of_operation = db.Column(db.Integer)
+```
+
+| Field                 | Type         | Notes                                                      |
+|-----------------------|--------------|------------------------------------------------------------|
+| `id`                  | Integer (PK) | Auto-incremented primary key                               |
+| `name`                | String (200) | The human-readable tag label; required                     |
+| `category_parent`     | Integer      | Optional ID of a parent category for hierarchical nesting  |
+| `number_of_operation` | Integer      | Tracks how many times this category has been used          |
+
+## Tag Model
+
+```python
+class Tag(db.Model):
+    id                 = db.Column(db.Integer, primary_key=True)
+    category_id        = db.Column(db.Integer, db.ForeignKey('category.id'))
+    money_transfer_id  = db.Column(db.Integer, db.ForeignKey('money_transfer.id'))
+
+    category       = db.relationship('Category',      backref=db.backref('tags', lazy=True))
+    money_transfer = db.relationship('MoneyTransfer', backref=db.backref('tags', lazy=True))
+```
+
+| Field                | Type         | Notes                                             |
+|----------------------|--------------|---------------------------------------------------|
+| `id`                 | Integer (PK) | Auto-incremented primary key                      |
+| `category_id`        | Integer (FK) | References the `Category` this tag represents     |
+| `money_transfer_id`  | Integer (FK) | References the `MoneyTransfer` being tagged        |
+
+Each `Tag` row is a pure join record — there is no extra data on it beyond the two foreign keys.
+
+## Tags in the Transaction Table
+
+Tags are rendered as clickable `<span>` elements inside each table row. The `generateTags` helper in `ui.js` builds these elements and wires up a click handler:
+
+```js
+function generateTags(transfer, container, tbody) {
+    container.addClass('cell-tags');
+    transfer.tags.forEach(each => {
+        let tag = $('<span>');
+        tag.text(each.name);
+        tag.click(function () {
+            loadTagValues(tbody, each);   // filter table by this category
+        });
+        container.append(tag);
+    });
+}
+```
+
+Clicking a tag calls `loadTagValues`, which in turn calls `GET /money_transfers_by_category/<id>`:
+
+```js
+function loadTagValues(tbody, tag) {
+    callAjax('/money_transfers_by_category/' + tag.id, function (response) {
+        loadValues(response, tbody);
+    });
+}
+```
+
+The server returns all transactions in the active wallet that share the same category:
+
+```python
+@app.route("/money_transfers_by_category/<int:category_id>", methods=['GET'])
+@login_required
+def money_transfers_by_category(category_id):
+    money_transfers = (
+        MoneyTransfer.query
+        .join(Tag, MoneyTransfer.id == Tag.money_transfer_id)
+        .filter(
+            Tag.category_id == category_id,
+            MoneyTransfer.wallet_id == current_user.last_visited_wallet_id
+        )
+        .all()
+    )
+    return collect_tags_from(money_transfers)
+```
+
+<Tip>
+  Use consistent tag names (e.g. always `groceries` rather than sometimes `grocery`) so that clicking a tag in the table shows all related transactions across every date.
+</Tip>
+
+## Hierarchical Categories
+
+The `category_parent` field on `Category` is designed to support nested category trees — for example a parent category `food` with children `groceries` and `restaurants`. This relationship is stored in the database but is not yet surfaced in the current UI; all categories are currently treated as flat labels.
+
+## API Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Transactions by Category" icon="tag" href="/api/transactions/by-category">
+    `GET /money_transfers_by_category/<id>` — List all transactions in the active wallet that carry a given category tag.
+  </Card>
+  <Card title="API Overview" icon="folder-plus" href="/api/overview">
+    `POST /add_category` — Manually create a named category.
+  </Card>
+</CardGroup>

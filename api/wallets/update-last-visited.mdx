@@ -1,0 +1,76 @@
+---
+title: "POST /update_last_visited_wallet — Switch Active Wallet"
+sidebarTitle: "POST /update_last_visited_wallet"
+description: "POST /update_last_visited_wallet sets the user's active wallet. All transaction queries are scoped to this wallet."
+---
+
+The `POST /update_last_visited_wallet` endpoint updates the currently authenticated user's active wallet context. Every transaction query in the application — including money transfers, chart data, monthly summaries, and category breakdowns — is scoped to `current_user.last_visited_wallet_id`. Calling this endpoint with a different wallet ID is what switches the user's view from one wallet to another without logging out or creating a new session.
+
+## Method & Path
+
+```
+POST /update_last_visited_wallet
+```
+
+## Authentication
+
+This endpoint requires an active login session. Requests without a valid session cookie are rejected and redirected to the login flow. Session cookies are issued automatically upon successful Google OAuth sign-in.
+
+## Request Body
+
+The request body must be valid JSON with the `Content-Type: application/json` header set.
+
+<ParamField body="wallet_id" type="integer" required>
+  The numeric ID of the wallet to activate for the current user. This value is written directly to `current_user.last_visited_wallet_id` in the `user` table. All subsequent queries (transfers, charts, statistics) will be filtered by this wallet ID until the endpoint is called again with a different value. Omitting this field or passing a falsy value returns a `400` error.
+</ParamField>
+
+## Example Request
+
+```bash
+curl -X POST https://your-app.example.com/update_last_visited_wallet \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=<your-session-cookie>" \
+  -d '{
+    "wallet_id": 3
+  }'
+```
+
+## Example Request Body
+
+```json
+{
+  "wallet_id": 3
+}
+```
+
+## Example Response
+
+```json
+{
+  "message": "Last group updated successfully"
+}
+```
+
+## Error Cases
+
+| Status | Body | Condition |
+|--------|------|-----------|
+| `200 OK` | `{"message": "Last group updated successfully"}` | The user's active wallet was updated successfully. |
+| `400 Bad Request` | `{"error": "Wallet ID is required"}` | The `wallet_id` field was missing from the request body, `null`, or evaluated to a falsy value (e.g. `0`). |
+| `401 Unauthorized` | — | The request was made without an authenticated session. The server redirects to the Google login flow. |
+
+## Missing `wallet_id` — 400 Response
+
+```json
+{
+  "error": "Wallet ID is required"
+}
+```
+
+<Note>
+  The frontend calls this endpoint automatically when the user selects a different wallet from the wallet dropdown in the navigation bar. After receiving a `200` response, the page is reloaded so that all visible data — transactions, charts, and monthly totals — is refreshed against the newly activated wallet.
+</Note>
+
+<Warning>
+  The endpoint does not validate that the supplied `wallet_id` exists in the database or that the current user has been assigned to that wallet. Passing an invalid or unassociated wallet ID will silently set `last_visited_wallet_id` to a non-existent value, causing all subsequent data queries to return empty results.
+</Warning>

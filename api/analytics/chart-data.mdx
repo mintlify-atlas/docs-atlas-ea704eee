@@ -1,0 +1,72 @@
+---
+title: "POST /chart_data — Daily Spending Totals for Charts"
+sidebarTitle: "POST /chart_data"
+description: "POST /chart_data returns an array of daily spending totals for the active wallet, adjusted to the client's timezone. Used to power the line chart."
+---
+
+The `/chart_data` endpoint aggregates every `MoneyTransfer` record in the user's currently active wallet and groups them by local calendar date. Because transaction timestamps are stored in UTC, the client's IANA timezone name is required so that each timestamp is correctly converted before the date boundary is applied. The resulting array is sorted chronologically and consumed by the frontend line chart to visualise spending and income over time.
+
+## Authentication
+
+This endpoint requires an active session. Requests without a valid session cookie are rejected by the `@login_required` decorator and redirected to the login flow.
+
+## Wallet scope
+
+All records are filtered to `current_user.last_visited_wallet_id` — the wallet the authenticated user most recently switched to. To query a different wallet, call `POST /update_last_visited_wallet` first.
+
+## Request
+
+### Body parameters
+
+<ParamField body="timeZone" type="string" required>
+  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The server uses this value to convert each UTC-stored `created_at` timestamp to a local date before grouping. If an invalid or unrecognised timezone name is supplied, the server will raise a `pytz` exception.
+</ParamField>
+
+## Response
+
+Returns a JSON array of objects, one per day that has at least one transaction, sorted by date ascending.
+
+<ResponseField name="Date" type="string">
+  The local calendar date on which the grouped transactions occurred, formatted as an ISO 8601 date string (`YYYY-MM-DD`). The date is derived from the UTC `created_at` value after conversion to the requested timezone.
+</ResponseField>
+
+<ResponseField name="Close" type="number">
+  The net total amount for all transactions on this date. Positive values indicate net income; negative values indicate net expenses. The frontend chart library is responsible for colour-coding based on sign.
+</ResponseField>
+
+## Example
+
+### Request
+
+```bash
+curl -X POST https://your-domain.com/chart_data \
+  -H "Content-Type: application/json" \
+  --cookie "session=<your-session-cookie>" \
+  -d '{"timeZone": "America/New_York"}'
+```
+
+### Request body
+
+```json
+{
+  "timeZone": "America/New_York"
+}
+```
+
+### Response
+
+```json
+[
+  { "Date": "2024-03-01", "Close": -45.50 },
+  { "Date": "2024-03-04", "Close": 1200.00 },
+  { "Date": "2024-03-07", "Close": -130.75 }
+]
+```
+
+<Note>
+  Only days that have at least one transaction appear in the result array. Days with no activity are omitted entirely — the chart layer on the frontend is responsible for any gap-filling or interpolation.
+</Note>
+
+<Note>
+  Individual `Close` values can be negative. A negative total means expenses outweighed income on that day; a positive total means the opposite. The frontend chart library handles colour coding based on the sign of each value.
+</Note>

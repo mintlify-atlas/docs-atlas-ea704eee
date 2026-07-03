@@ -1,0 +1,68 @@
+---
+title: "GET /money/<id> — Fetch a single money transfer"
+sidebarTitle: "GET /money/<id>"
+description: "Retrieve a single MoneyTransfer record by its ID. Returns the transfer's amount, description, and creation timestamp in ISO 8601 format."
+---
+
+Fetch the details of a single money transfer by its integer ID. The response includes the transfer's amount, description, and the time it was created. This endpoint requires an authenticated session — unauthenticated requests are redirected to the login flow.
+
+## Endpoint
+
+```
+GET /money/<id>
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow. Unauthenticated requests are redirected to `/google_login`.
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique integer ID of the `MoneyTransfer` record to retrieve.
+</ParamField>
+
+## Response
+
+A JSON object representing the money transfer.
+
+<ResponseField name="id" type="integer">
+  The unique identifier of the money transfer.
+</ResponseField>
+
+<ResponseField name="amount" type="float">
+  The transfer amount. Positive values represent income; negative values represent expenses.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  A short human-readable description of the transfer (up to 200 characters).
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  The timestamp when the transfer was created, formatted as an ISO 8601 string (e.g. `"2024-01-15T10:30:00"`). The value is stored and returned in UTC.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET https://your-app.example.com/money/42 \
+  -H "Cookie: session=<your-session-cookie>"
+```
+
+## Example Response
+
+```json
+{
+  "id": 42,
+  "amount": -35.50,
+  "description": "Groceries",
+  "created_at": "2024-01-15T10:30:00"
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `302 Found` | The user is not authenticated. The client is redirected to the Google OAuth login page. |
+| `404 Not Found` | No `MoneyTransfer` record exists with the given `id`. Flask returns a standard 404 JSON/HTML error via `get_or_404`. |

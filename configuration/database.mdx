@@ -1,0 +1,180 @@
+---
+title: "Database Setup and Schema for Life Cost"
+sidebarTitle: "Database"
+description: "Life Cost uses MySQL 8.0 with SQLAlchemy. Tables are created automatically on startup. Learn about the schema, connection string format, and using Docker."
+---
+
+Life Cost persists all financial data — wallets, transactions, categories, tags, and user accounts — in a MySQL 8.0 database. The application uses [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/) as its ORM and creates all required tables automatically the first time the server starts. No separate migration step is needed for a fresh installation.
+
+## Requirements
+
+- **MySQL 8.0** (or a compatible MariaDB version)
+- The database and user must be created before starting the app
+- The `mysqlclient` Python package (included in `requirements.txt`) is used as the database driver
+
+The easiest way to satisfy these requirements is with the bundled Docker Compose setup described at the bottom of this page.
+
+## Connection String Format
+
+The database connection is configured entirely through the `DATABASE_URL` environment variable. SQLAlchemy expects a URL in the following format:
+
+```
+mysql://user:password@host:port/dbname
+```
+
+| Segment    | Description                                        | Example          |
+|------------|----------------------------------------------------|------------------|
+| `user`     | MySQL username                                     | `admin`          |
+| `password` | MySQL password for that user                       | `secret`         |
+| `host`     | Hostname or IP of the MySQL server                 | `localhost`      |
+| `port`     | MySQL port (optional; defaults to `3306`)          | `3306`           |
+| `dbname`   | Name of the target database                        | `life_db`        |
+
+**Example:**
+
+```env
+DATABASE_URL=mysql://admin:secret@localhost/life_db
+```
+
+## Schema Overview
+
+All tables are defined as SQLAlchemy models in `app/models.py`. The following tables are created automatically by `db.create_all()` on startup.
+
+### `user`
+
+Stores authenticated user accounts. Populated on first Google sign-in.
+
+| Column                  | Type          | Notes                                      |
+|-------------------------|---------------|--------------------------------------------|
+| `id`                    | Integer (PK)  | Auto-increment primary key                 |
+| `username`              | String(150)   | Unique; synced from Google profile name    |
+| `email`                 | String(150)   | Unique; synced from Google account email   |
+| `picture`               | String(300)   | URL of Google profile picture; nullable    |
+| `last_visited_wallet_id`| Integer (FK)  | Foreign key → `wallet.id`; nullable        |
+
+### `wallet`
+
+Represents a spending wallet (e.g., a budget or account).
+
+| Column        | Type         | Notes                        |
+|---------------|--------------|------------------------------|
+| `id`          | Integer (PK) | Auto-increment primary key   |
+| `name`        | String(150)  | Unique; required             |
+| `description` | String(300)  | Optional                     |
+
+### `user_wallet`
+
+Many-to-many association table linking users to wallets. Every new wallet is automatically associated with all existing users.
+
+| Column       | Type         | Notes                              |
+|--------------|--------------|------------------------------------|
+| `user_id`    | Integer (PK/FK) | Foreign key → `user.id`         |
+| `wallet_id`  | Integer (PK/FK) | Foreign key → `wallet.id`       |
+| `created_at` | DateTime     | Defaults to UTC timestamp at insert|
+
+### `category`
+
+Represents a spending category (tag label). Categories can be nested via `category_parent`.
+
+| Column               | Type         | Notes                                          |
+|----------------------|--------------|------------------------------------------------|
+| `id`                 | Integer (PK) | Auto-increment primary key                     |
+| `name`               | String(200)  | Required                                       |
+| `category_parent`    | Integer      | Optional self-reference to a parent category   |
+| `number_of_operation`| Integer      | Count of operations using this category        |
+
+### `money_transfer`
+
+The core financial record — a single income or expense entry.
+
+| Column        | Type         | Notes                                                        |
+|---------------|--------------|--------------------------------------------------------------|
+| `id`          | Integer (PK) | Auto-increment primary key                                   |
+| `wallet_id`   | Integer      | References `wallet.id` (no FK constraint at DB level)        |
+| `amount`      | Float        | Positive = expense, negative = income; required              |
+| `description` | String(200)  | Free-text note; required                                     |
+| `created_at`  | DateTime     | Defaults to UTC timestamp at insert                          |
+| `modifed_at`  | DateTime     | Defaults to UTC timestamp at insert; updated on edit         |
+| `user_id`     | Integer      | References `user.id` (no FK constraint at DB level); required|
+
+### `tag`
+
+Join table connecting a `money_transfer` record to one or more `category` entries.
+
+| Column              | Type         | Notes                              |
+|---------------------|--------------|------------------------------------|
+| `id`                | Integer (PK) | Auto-increment primary key         |
+| `category_id`       | Integer (FK) | Foreign key → `category.id`        |
+| `money_transfer_id` | Integer (FK) | Foreign key → `money_transfer.id`  |
+
+## Automatic Table Creation
+
+On every application startup, Flask-SQLAlchemy calls `db.create_all()` inside the app context:
+
+```python
+with app.app_context():
+    db.create_all()
+```
+
+This inspects all registered models and issues `CREATE TABLE IF NOT EXISTS` statements for any tables that do not yet exist. It is safe to run against an already-initialised database — existing tables and data are never touched.
+
+<Warning>
+  `db.create_all()` **does not run schema migrations**. If you add a new column or change a column type in a model after the table has already been created, the change will not be applied automatically. You must either apply the change manually with raw SQL or introduce a migration tool such as [Flask-Migrate / Alembic](https://flask-migrate.readthedocs.io/).
+
+  ```sql
+  -- Example: manually adding a column that was added to a model
+  ALTER TABLE money_transfer ADD COLUMN currency VARCHAR(10) DEFAULT 'USD';
+  ```
+</Warning>
+
+## Using the Bundled Docker MySQL
+
+The `docker-compose.yml` file in the repository starts a MySQL 8.0 container alongside the application. The relevant portion of the file is:
+
+```yaml
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_container
+    environment:
+      MYSQL_ROOT_PASSWORD: Spigit123!
+      MYSQL_DATABASE: life_db
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: 123
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3306:3306"
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: phpmyadmin
+    environment:
+      PMA_HOST: mysql_container
+      MYSQL_ROOT_PASSWORD: Spigit123!
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+
+volumes:
+  mysql_data:
+```
+
+The compose file also starts a **phpMyAdmin** instance at [http://localhost:8080](http://localhost:8080), which gives you a browser-based GUI to inspect tables, run queries, and manage the database without installing any additional tooling.
+
+Database files are stored in the named volume `mysql_data`, so data persists across container restarts.
+
+<Tip>
+  After starting the MySQL container, verify connectivity before launching the app by running a simple liveness query:
+
+  ```bash
+  docker exec -it mysql_container mysql -u admin -p123 life_db -e "SELECT 1;"
+  ```
+
+  A result of `1` confirms the server is reachable and the `life_db` database exists. If you are connecting from outside Docker, you can use any MySQL client:
+
+  ```bash
+  mysql -h 127.0.0.1 -P 3306 -u admin -p123 life_db -e "SELECT 1;"
+  ```
+</Tip>

@@ -1,0 +1,117 @@
+---
+title: "POST /money_transfer_from_date — Transfers for a specific day"
+sidebarTitle: "POST /money_transfer_from_date"
+description: "Return all MoneyTransfer records that fall on a given local calendar day in the user's active wallet. Timezone-aware: dates are converted to UTC before querying."
+---
+
+Return every money transfer that occurred on a specific local calendar day within the authenticated user's active wallet. The server converts the supplied date to the client's timezone, computes the UTC-equivalent midnight-to-midnight window, and queries the database with those UTC bounds. Results are ordered by transfer ID descending (newest first) and include the same full transfer shape as the other list endpoints.
+
+This endpoint is designed for the daily view in the Life Cost UI, where a user taps a day in the calendar and sees all transactions for that day in their local time.
+
+## Endpoint
+
+```
+POST /money_transfer_from_date
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow.
+
+## Request Body
+
+<ParamField body="timeZone" type="string" required>
+  An IANA timezone identifier string (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). Used to localise the supplied `date` and to define the day boundaries before converting to UTC for the database query.
+</ParamField>
+
+<ParamField body="date" type="string" required>
+  An ISO 8601 date-time string representing any moment within the target day (e.g. `"2024-01-15T00:00:00Z"` or `"2024-01-15T12:00:00+05:30"`). The server extracts the calendar date in the given `timeZone` and queries from `00:00:00` to `23:59:59.999999` of that day.
+</ParamField>
+
+## Response
+
+An array of transfer objects in the same shape returned by [`GET /last_money_transfers/<limit>`](/api/transactions/last-transfers). An empty array is returned if there are no transfers on the specified day.
+
+<ResponseField name="id" type="integer">
+  The unique identifier of the transfer.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Human-readable description of the transfer.
+</ResponseField>
+
+<ResponseField name="amount" type="float">
+  Transfer amount. Negative for expenses, positive for income.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp (UTC) when the transfer was created.
+</ResponseField>
+
+<ResponseField name="modifed_at" type="string">
+  ISO 8601 timestamp (UTC) of the last modification. Field name is `modifed_at` (single `i`) matching the database column.
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Category/tag objects for this transfer.
+
+  <Expandable title="Tag object fields">
+    <ResponseField name="id" type="integer">
+      ID of the backing `Category` record.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Category name (e.g. `"food"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="created_by" type="string">
+  `username` of the user who created the transfer.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://your-app.example.com/money_transfer_from_date \
+  -H "Content-Type: application/json" \
+  -H "Cookie: session=<your-session-cookie>" \
+  -d '{
+    "timeZone": "America/New_York",
+    "date": "2024-01-15T00:00:00Z"
+  }'
+```
+
+## Example Request Body
+
+```json
+{
+  "timeZone": "America/New_York",
+  "date": "2024-01-15T00:00:00Z"
+}
+```
+
+## Example Response
+
+```json
+[
+  {
+    "id": 42,
+    "description": "Groceries",
+    "amount": -35.50,
+    "created_at": "2024-01-15T10:30:00",
+    "modifed_at": "2024-01-15T10:30:00",
+    "tags": [
+      {"id": 3, "name": "food"}
+    ],
+    "created_by": "Jane Smith"
+  }
+]
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `302 Found` | The user is not authenticated. |
+| `400 Bad Request` | The request body is missing `date` or `timeZone`, or `date` cannot be parsed as ISO 8601. |
+| `500 Internal Server Error` | `timeZone` is not a valid IANA timezone identifier and `pytz` raises an exception. |

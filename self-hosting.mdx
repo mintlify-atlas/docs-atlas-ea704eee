@@ -1,0 +1,208 @@
+---
+title: "Self-Host Life Cost on Your Own Server"
+sidebarTitle: "Self-Hosting"
+description: "Deploy Life Cost on your own infrastructure using Docker Compose, configure environment variables, and connect it to a MySQL database."
+---
+
+Life Cost is designed from the ground up for self-hosting. Because all your financial data stays on your own infrastructure, there are no usage limits, no subscription fees, and no third-party services that have access to your transactions. This guide walks you through deploying Life Cost on a Linux server or VPS using Docker Compose.
+
+## System Requirements
+
+| Component | Minimum Version | Notes |
+|---|---|---|
+| Docker | 20.10+ | Required to run the application container. |
+| Docker Compose | v2 (`docker compose`) or standalone v1.29+ | Used to orchestrate the app, MySQL, and phpMyAdmin. |
+| MySQL | 8.0 | Can be provided by the included Compose service or an existing MySQL instance. |
+| Python | 3.10+ | Only needed if running the app outside Docker (not recommended for production). |
+
+## Production Deployment Steps
+
+<Steps>
+  <Step title="Pull the Docker image">
+    Pull the latest Life Cost release image from Docker Hub:
+
+    ```bash
+    docker pull akevalion/life:0.0.9.Release
+    ```
+
+    Confirm the image is available locally:
+
+    ```bash
+    docker images | grep akevalion/life
+    ```
+  </Step>
+
+  <Step title="Set up MySQL">
+    You have two options for the MySQL database:
+
+    **Option A — Use the bundled Docker Compose MySQL service (recommended for most self-hosters):**
+
+    The included `docker-compose.yml` defines a `mysql` service backed by a named Docker volume (`mysql_data`). Data persists across container restarts automatically. No additional setup is required beyond setting strong passwords (see Step 3).
+
+    **Option B — Connect to an existing MySQL instance:**
+
+    If you already operate a MySQL 8.0 server, simply point `DATABASE_URL` at it. Create a dedicated database and user first:
+
+    ```sql
+    CREATE DATABASE life_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+    CREATE USER 'life_user'@'%' IDENTIFIED BY 'strongpassword';
+    GRANT ALL PRIVILEGES ON life_db.* TO 'life_user'@'%';
+    FLUSH PRIVILEGES;
+    ```
+  </Step>
+
+  <Step title="Configure environment variables">
+    Life Cost requires three environment variables. Set them in your `docker-compose.yml`, a `.env` file, or your server's environment:
+
+    | Variable | Format / Example | Description |
+    |---|---|---|
+    | `DATABASE_URL` | `mysql://user:password@host/dbname` | SQLAlchemy connection string for MySQL. |
+    | `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` | OAuth 2.0 Client ID from Google Cloud Console. |
+    | `GOOGLE_CLIENT_SECRET` | `GOCSPX-xxxxxxxx` | OAuth 2.0 Client Secret from Google Cloud Console. |
+
+    Example using a `.env` file alongside `docker-compose.yml`:
+
+    ```bash
+    # .env  (keep this file out of version control)
+    DATABASE_URL=mysql://life_user:strongpassword@mysql_container/life_db
+    GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-client-secret
+    ```
+
+    Then reference variables in your `docker-compose.yml` with the `${VAR}` syntax:
+
+    ```yaml
+    environment:
+      DATABASE_URL: "${DATABASE_URL}"
+      GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
+      GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET}"
+    ```
+  </Step>
+
+  <Step title="Run with Docker Compose">
+    From the directory containing your `docker-compose.yml`, start all services:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    To run the app as a standalone container without Compose (using an external MySQL instance):
+
+    ```bash
+    docker run -d \
+      --name life_app \
+      -p 5000:3000 \
+      -e DATABASE_URL="mysql://life_user:strongpassword@your-mysql-host/life_db" \
+      -e GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+      -e GOOGLE_CLIENT_SECRET="your-client-secret" \
+      akevalion/life:0.0.9.Release
+    ```
+  </Step>
+
+  <Step title="Verify the app is running">
+    Check that all containers started successfully:
+
+    ```bash
+    docker-compose ps
+    ```
+
+    You should see `life_app`, `mysql_container`, and `phpmyadmin` all in the `Up` state. Then open a browser and navigate to:
+
+    ```
+    http://your-server-ip:5000
+    ```
+
+    You should be redirected to Google's OAuth consent screen. After signing in, the Life Cost dashboard will load and you can begin creating wallets and logging transactions.
+
+    To inspect application logs:
+
+    ```bash
+    docker-compose logs -f app
+    ```
+  </Step>
+</Steps>
+
+## Dockerfile Reference
+
+The official Docker image is built from the following `Dockerfile` in the repository root:
+
+```dockerfile
+FROM python:3.10-alpine
+
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    mariadb-dev \
+    linux-headers \
+    libffi-dev \
+    pkgconfig
+
+WORKDIR /app
+COPY . /app
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
+
+EXPOSE 3000
+CMD ["python", "./index.py"]
+```
+
+The image is based on `python:3.10-alpine` and installs the MariaDB/MySQL client libraries needed by the `mysqlclient` Python package. The application process listens on **port 3000** inside the container.
+
+## Port Mapping
+
+The container exposes port **3000** internally. The `docker-compose.yml` maps this to port **5000** on the host:
+
+```yaml
+ports:
+  - "5000:3000"
+```
+
+You can remap the host port to any available port on your server:
+
+```yaml
+ports:
+  - "80:3000"    # serve on port 80 (HTTP)
+  - "8888:3000"  # or any other host port
+```
+
+If you place Life Cost behind a reverse proxy (e.g. Nginx or Caddy), map to a high-numbered port and configure the proxy to forward traffic to it.
+
+## Database Initialisation
+
+Life Cost uses Flask-SQLAlchemy's `db.create_all()` call inside the application factory (`app/main.py`). On every startup, SQLAlchemy inspects the connected MySQL database and creates any missing tables:
+
+```python
+with app.app_context():
+    db.create_all()
+```
+
+This means **no manual migration or schema import is required**. The tables `user`, `wallet`, `category`, `money_transfer`, `tag`, and `user_wallet` are created automatically the first time the app connects to a fresh database.
+
+<Tip>
+  During development, the phpMyAdmin service included in `docker-compose.yml` is available at `http://localhost:8080`. Use it to inspect tables, run ad-hoc queries, and verify that data is being written correctly. Log in with the root credentials defined under the `mysql` service in your Compose file.
+</Tip>
+
+## Security Considerations
+
+<Warning>
+  The application factory (`app/main.py`) sets `os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'` unconditionally. This flag tells the OAuth library to permit non-HTTPS redirect URIs and is intended for local development only. In a production deployment served over HTTPS, remove this environment variable override and ensure your Google OAuth redirect URI uses `https://`. Running with this flag on a public server over plain HTTP exposes the OAuth token exchange to interception.
+</Warning>
+
+For a hardened production setup:
+
+- Place the app behind a TLS-terminating reverse proxy (Nginx, Caddy, Traefik).
+- Register an `https://` redirect URI in your Google Cloud project credentials.
+- Remove or guard the `OAUTHLIB_INSECURE_TRANSPORT=1` setting in production builds.
+- Use strong, randomly generated passwords for `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, and `app.secret_key`.
+- Keep your `GOOGLE_CLIENT_SECRET` and database credentials out of version control (use a `.env` file or a secrets manager).
+
+## Further Configuration
+
+<CardGroup cols={2}>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment">
+    Full reference for all supported environment variables and their default values.
+  </Card>
+  <Card title="Database Configuration" icon="database" href="/configuration/database">
+    Details on the MySQL schema, connection string format, and advanced database options.
+  </Card>
+</CardGroup>

@@ -1,0 +1,162 @@
+---
+title: "Transactions: Log Income and Expenses Daily"
+sidebarTitle: "Transactions"
+description: "Log income and expense transactions in Life Cost with a description, amount, and tags. Amounts can be positive (income) or negative (expense)."
+---
+
+Transactions — called `MoneyTransfer` internally — are the core records in Life Cost. Each transaction captures what money moved, how much, and when, and it lives inside the currently active wallet. Positive amounts represent money coming in (income) and negative amounts represent money going out (expenses). The transaction table on the main page is fully editable inline: no modal or separate form is required to add or update a record.
+
+## Transaction Fields
+
+Every `MoneyTransfer` row in the database stores the following:
+
+```python
+class MoneyTransfer(db.Model):
+    id          = db.Column(db.Integer, primary_key=True)
+    wallet_id   = db.Column(db.Integer, nullable=False)
+    amount      = db.Column(db.Float,   nullable=False)
+    description = db.Column(db.String(200), nullable=False)
+    created_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    modifed_at  = db.Column(db.DateTime, default=datetime.utcnow)
+    user_id     = db.Column(db.Integer, nullable=False)
+```
+
+| Field         | Type          | Notes                                              |
+|---------------|---------------|----------------------------------------------------|
+| `id`          | Integer (PK)  | Auto-incremented primary key                       |
+| `wallet_id`   | Integer (FK)  | The wallet this transaction belongs to             |
+| `amount`      | Float         | Positive = income, negative = expense              |
+| `description` | String (200)  | Short human-readable label; required               |
+| `created_at`  | DateTime      | UTC timestamp; can be provided on creation         |
+| `modifed_at`  | DateTime      | Updated automatically on every edit                |
+| `user_id`     | Integer (FK)  | ID of the user who created the transaction         |
+
+Tags are stored separately in the `Tag` model and link to a transaction via `money_transfer_id`. See [Categories & Tags](/features/categories-tags) for details.
+
+## Adding a Transaction
+
+The bottom row of the transaction table is always an editable row with three `contenteditable` cells: **Description**, **Value** (amount), and **Tags**. Placeholder text is shown when a cell is empty and cleared automatically on focus.
+
+<Steps>
+  <Step title="Click the Description cell">
+    The editable row at the bottom of the table receives focus on the first cell automatically. Type a short label for the transaction (e.g. `Groceries`).
+  </Step>
+  <Step title="Tab to the Value cell">
+    Enter a numeric amount. Use a period (`.`) as the decimal separator — commas are not accepted. Positive values record income; negative values record expenses (e.g. `-42.50`).
+  </Step>
+  <Step title="Tab to the Tags cell">
+    Enter one or more comma-separated tag names (e.g. `food, supermarket`). At least one tag is required.
+  </Step>
+  <Step title="Press Enter to submit">
+    The `keydown` handler calls `evaluateFields()`, which validates all three cells. If validation passes, `sendMoneyTransfer()` fires a `POST /add_money` request with the description, amount, tags array, and the current date in ISO format.
+  </Step>
+</Steps>
+
+After a successful save the table reloads — either showing the last 5 transactions (if today is selected) or the transactions for the previously selected date — and the calendar refreshes to reflect the new daily total.
+
+```js
+// ajax.js — core add/edit dispatcher
+function sendMoneyTransfer(desc, value, tags, transferId, tbody) {
+    let data = {
+        description: desc,
+        amount: value,
+        tags: tags.split(",").map(item => item.trim()).filter(item => item),
+        created_at: currentDate.toISOString()
+    };
+    if (transferId) data.id = transferId;
+
+    $.ajax({
+        url: transferId ? '/edit_money' : '/add_money',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(data),
+        success: function (response) { /* reload table & calendar */ }
+    });
+}
+```
+
+## Editing a Transaction
+
+Each table row has an edit icon (pencil). Clicking it — or clicking the description text itself — opens the **info panel** (`#info`) which shows the full transaction details including creation date, last-modified date, and the creating user's name.
+
+<Steps>
+  <Step title="Open the info panel">
+    Click the description text or the <i className="fas fa-edit" /> icon in the row's actions column. The panel fades in with the current values pre-filled.
+  </Step>
+  <Step title="Click Editar in the info panel">
+    The info panel closes and the static row is replaced in-place with an editable row pre-populated with the existing description, amount, and comma-separated tag names.
+  </Step>
+  <Step title="Make your changes and press Enter">
+    `evaluateFields()` runs the same validation as for a new transaction. On success, `sendMoneyTransfer()` is called with the existing `transfer.id`, which routes the request to `POST /edit_money` instead of `POST /add_money`.
+  </Step>
+</Steps>
+
+The `edit_money` endpoint deletes all existing tags for the transaction and re-creates them from the submitted tag list, so the tag set is fully replaced on every edit:
+
+```python
+@app.route("/edit_money", methods=['POST'])
+def edit_money():
+    data = request.json
+    edited = MoneyTransfer.query.filter_by(id=data["id"]).first()
+    edited.amount = data["amount"]
+    edited.description = data["description"]
+    edited.modified_at = datetime.utcnow()
+
+    Tag.query.filter_by(money_transfer_id=edited.id).delete()
+    for tag_name in data["tags"]:
+        category = Category.query.filter_by(name=tag_name).first()
+        if not category:
+            category = Category(name=tag_name, category_parent=None, number_of_operation=0)
+            db.session.add(category)
+            db.session.flush()
+        db.session.add(Tag(category_id=category.id, money_transfer_id=edited.id))
+    db.session.commit()
+```
+
+## Deleting a Transaction
+
+Click the trash icon in any row's actions column, or use the **Eliminar** button in the info panel. A `DELETE /remove_money/<id>` request is sent immediately — no confirmation dialog is shown.
+
+The server deletes all `Tag` rows linked to the transaction before removing the `MoneyTransfer` record itself:
+
+```python
+@app.route("/remove_money/<int:id>", methods=['DELETE'])
+def remove_money(id):
+    money_to_delete = MoneyTransfer.query.get_or_404(id)
+    Tag.query.filter_by(money_transfer_id=money_to_delete.id).delete()
+    db.session.delete(money_to_delete)
+    db.session.commit()
+```
+
+After deletion the table reloads (returning to the last selected date or the default 5 most-recent transactions) and the calendar updates its daily totals.
+
+## Validation Rules
+
+All validation runs client-side in `validation.js` before any network request is made. Fields that fail validation flash red to draw attention.
+
+| Field         | Rule                                                                  |
+|---------------|-----------------------------------------------------------------------|
+| `description` | Must not be empty or equal to the placeholder text `"Descripción"`   |
+| `amount`      | Must not be empty; must not contain a comma; must parse as a float    |
+| `tags`        | Must not be empty or equal to the placeholder text `"Tags"`           |
+
+<Warning>
+  Use a **period (`.`)** as the decimal separator for amounts — for example `12.50` or `-7.99`. Entering a comma (`,`) is explicitly rejected by the validator and will prevent the transaction from being saved.
+</Warning>
+
+## API Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Add Transaction" icon="plus" href="/api/transactions/add-money">
+    `POST /add_money` — Create a new transaction in the active wallet.
+  </Card>
+  <Card title="Edit Transaction" icon="pen" href="/api/transactions/edit-money">
+    `POST /edit_money` — Update description, amount, and tags for an existing transaction.
+  </Card>
+  <Card title="Delete Transaction" icon="trash" href="/api/transactions/remove-money">
+    `DELETE /remove_money/<id>` — Remove a transaction and all its tags.
+  </Card>
+  <Card title="Last Transfers" icon="clock-rotate-left" href="/api/transactions/last-transfers">
+    `GET /last_money_transfers/<limit>` — Fetch the most recent transactions for the active wallet.
+  </Card>
+</CardGroup>

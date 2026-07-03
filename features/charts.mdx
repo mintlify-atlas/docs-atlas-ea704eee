@@ -1,0 +1,152 @@
+---
+title: "Charts and Analytics: Visualize Your Spending History"
+sidebarTitle: "Charts"
+description: "Life Cost provides a line chart of daily spending over time and a pie chart showing income vs. expense breakdown for your active wallet."
+---
+
+Life Cost includes two D3-powered charts that turn your transaction history into visual summaries. The **line chart** plots your running financial balance day by day over the full lifetime of the active wallet, and the **pie/donut chart** breaks down the overall split between income and expenses. Both charts are scoped to `current_user.last_visited_wallet_id` and adjust for the client's local timezone so day boundaries match what you see in the calendar.
+
+## Opening the Chart Modal
+
+A **Mostrar Gráfico** button in the page header opens the `#chartModal` overlay. Clicking the overlay background or the `×` button closes it and returns to the main page.
+
+When the modal opens, `showChart()` in `chart.js` fires immediately:
+
+```js
+function showChart() {
+    $('#chartModal').show();
+    $('#overlay').show();
+    $('#chart').empty();
+
+    const data = { 'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone };
+    $.ajax({
+        url: '/chart_data',
+        method: 'POST',
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function (chartData) {
+            // accumulate running totals, then build the SVG line chart
+            buildChart(chartData);
+        }
+    });
+}
+```
+
+## Line Chart — Daily Balance Over Time
+
+**Endpoint:** `POST /chart_data`  
+**Request body:** `{ "timeZone": "<IANA timezone string>" }`
+
+The server fetches every `MoneyTransfer` for the active wallet, groups them by local calendar date, and returns an array of `{ Date, Close }` objects sorted chronologically:
+
+```python
+@app.route("/chart_data", methods=['POST'])
+@login_required
+def chart_data():
+    data = request.get_json()
+    client_tz = pytz.timezone(data.get('timeZone', 'UTC'))
+
+    transfers = MoneyTransfer.query.filter(
+        MoneyTransfer.wallet_id == current_user.last_visited_wallet_id
+    ).all()
+
+    daily_totals = {}
+    for transfer in transfers:
+        local_date = transfer.created_at.replace(tzinfo=pytz.utc).astimezone(client_tz).date()
+        daily_totals[local_date] = daily_totals.get(local_date, 0) + transfer.amount
+
+    days = [{'Date': date.isoformat(), 'Close': total}
+            for date, total in sorted(daily_totals.items())]
+    return jsonify(days)
+```
+
+The client then accumulates a **running total** before rendering — each day's `Close` value becomes the sum of all previous days plus the current day's net amount:
+
+```js
+let lastValue = 0;
+chartData.forEach(item => {
+    item.Date = new Date(item.Date);
+    lastValue = item.Close = lastValue - item.Close;
+});
+buildChart(chartData);
+```
+
+The resulting SVG uses a `d3.scaleUtc` x-axis for dates and a `d3.scaleLinear` y-axis for the monetary balance. Hovering the chart shows a tooltip with the exact date and balance value; clicking a data point closes the modal and loads that day's transactions into the main table.
+
+<Info>
+  The line chart shows your **cumulative balance** — the running sum of all daily net amounts — not just the isolated amount for each day. A flat line means your balance held steady; a downward slope means you spent more than you earned over that period.
+</Info>
+
+## Pie / Donut Chart — Income vs. Expenses
+
+**Endpoint:** `POST /pi_data`  
+**Request body:** `{ "timeZone": "<IANA timezone string>" }`
+
+The server sums all positive amounts (income) and all negative amounts (expenses) separately across every transaction in the active wallet:
+
+```python
+@app.route("/pi_data", methods=['POST'])
+@login_required
+def pi_data():
+    data = request.get_json()
+    client_tz = pytz.timezone(data.get('timeZone', 'UTC'))
+
+    transfers = MoneyTransfer.query.filter(
+        MoneyTransfer.wallet_id == current_user.last_visited_wallet_id
+    ).all()
+
+    income = outcome = 0
+    for transfer in transfers:
+        if transfer.amount > 0:
+            outcome += transfer.amount
+        else:
+            income += transfer.amount
+
+    return jsonify({'income': income, 'outcome': outcome})
+```
+
+The client renders the result as a **donut chart** (inner radius ≈ 67% of outer radius) using `createPieChart()`. Each segment is labeled with its name and value. Segment colors are drawn from a D3 spectral color scale.
+
+```js
+function createPieChart(data, width) {
+    const arc = d3.arc()
+        .innerRadius(radius * 0.67)   // donut hole
+        .outerRadius(radius - 1);
+
+    const pie = d3.pie()
+        .padAngle(1 / radius)
+        .sort(null)
+        .value(d => d.value);
+    // ...
+}
+```
+
+## Wallet Scope
+
+Both chart endpoints filter transactions by `current_user.last_visited_wallet_id`. Switching wallets (see [Wallets](/features/wallets)) and reopening the chart will reflect the newly selected wallet's data.
+
+## Timezone Handling
+
+Both endpoints accept a `timeZone` field in the POST body. The server uses `pytz` to convert each transaction's UTC `created_at` timestamp into the client's local date before aggregating. This ensures that a transaction posted at 11 PM in one timezone does not appear on the next calendar day in the chart.
+
+```python
+local_date = transfer.created_at.replace(tzinfo=pytz.utc).astimezone(client_tz).date()
+```
+
+The client reads the browser timezone with:
+
+```js
+Intl.DateTimeFormat().resolvedOptions().timeZone
+// e.g. "Europe/London", "America/Chicago"
+```
+
+## API Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Line Chart Data" icon="chart-line" href="/api/analytics/chart-data">
+    `POST /chart_data` — Returns timezone-adjusted daily totals for the active wallet, suitable for plotting a line chart.
+  </Card>
+  <Card title="Pie Chart Data" icon="chart-pie" href="/api/analytics/pi-data">
+    `POST /pi_data` — Returns total income and total expenses across all time for the active wallet.
+  </Card>
+</CardGroup>

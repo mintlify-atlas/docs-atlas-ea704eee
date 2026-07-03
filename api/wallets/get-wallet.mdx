@@ -1,0 +1,67 @@
+---
+title: "GET /wallet/<id> — Retrieve a Wallet by ID"
+sidebarTitle: "GET /wallet"
+description: "GET /wallet/<id> returns the wallet name and description for the given ID. Requires an active session."
+---
+
+The `GET /wallet/<id>` endpoint fetches a single wallet's details by its numeric ID. This is useful for displaying wallet metadata in the UI or verifying a wallet's existence before performing operations against it. The endpoint is protected by `@login_required`, so an authenticated session cookie must accompany every request.
+
+## Method & Path
+
+```
+GET /wallet/<id>
+```
+
+## Authentication
+
+This endpoint requires an active login session. Requests without a valid session cookie are rejected and redirected to the login flow. Session cookies are issued automatically upon successful Google OAuth sign-in.
+
+## Path Parameter
+
+<ParamField path="id" type="integer" required>
+  The unique numeric ID of the wallet to retrieve. Corresponds to the `Wallet.id` primary key column in the database. If no wallet with this ID exists, the endpoint returns a `404 Not Found` response.
+</ParamField>
+
+## Response Fields
+
+A successful `200 OK` response returns a JSON object with the following fields:
+
+<ResponseField name="id" type="integer">
+  The unique numeric identifier of the wallet. Mirrors the `id` primary key stored in the `wallet` table.
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The display name of the wallet. Unique across all wallets; maximum 150 characters.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  A human-readable description of the wallet's purpose or contents. Optional — may be `null` if no description was provided when the wallet was created. Maximum 300 characters.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET https://your-app.example.com/wallet/1 \
+  -H "Cookie: session=<your-session-cookie>"
+```
+
+## Example Response
+
+```json
+{
+  "id": 1,
+  "name": "Household Budget",
+  "description": "Shared expenses for rent, groceries, and utilities"
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `404 Not Found` | No wallet exists with the given `id`. Flask's `get_or_404` helper returns a standard 404 HTML response. |
+| `401 Unauthorized` | The request was made without an authenticated session. The server redirects to the Google login flow. |
+
+<Warning>
+  If your client receives a redirect (HTTP 302) instead of a JSON response, it means the session has expired or is missing. Re-authenticate via the Google OAuth flow before retrying.
+</Warning>

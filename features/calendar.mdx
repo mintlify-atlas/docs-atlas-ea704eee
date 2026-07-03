@@ -1,0 +1,119 @@
+---
+title: "Calendar View: Browse Spending Day by Day"
+sidebarTitle: "Calendar"
+description: "The Life Cost calendar shows per-day spending totals for the current month. Click any day to load its transactions in the table below."
+---
+
+The calendar gives you a bird's-eye view of a full month at a glance. Each day cell shows the net total of all transactions recorded on that day, color-coded so you can immediately see which days were expensive (red) and which brought in money (green). Clicking any day drills down into that day's individual transactions in the table below.
+
+## How the Calendar Works
+
+When the page loads — or when the user navigates to a different month — `generateCalendar()` in `calendar.js` builds a standard Sunday-to-Saturday grid for the selected month and calls `loadMonthValues()` to fetch the daily aggregates from the server.
+
+`loadMonthValues()` sends a `POST /money_transfers` request with the current month's date and the client's IANA timezone:
+
+```js
+function loadMonthValues(date) {
+    const data = {
+        'timeZone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+        'date': date.toISOString()
+    };
+    $.ajax({
+        url: '/money_transfers',
+        type: 'POST',
+        data: JSON.stringify(data),
+        contentType: 'application/json',
+        success: function (result) {
+            // stamp each day cell with its total_amount
+            result.days.forEach(each => {
+                const cell = $("#" + each.day);
+                const bottomMessage = $('<div></div>');
+                addSignColor(each.total_amount, bottomMessage);
+                cell.append(bottomMessage);
+            });
+            // update average stats
+        }
+    });
+}
+```
+
+The `addSignColor` helper applies the CSS class `color-insert` (green) to positive totals and `color-extract` (red) to negative totals, so income days and expense days are visually distinct without any extra configuration.
+
+## Month Navigation
+
+The calendar header contains **Prev** (`#prevMonth`) and **Next** (`#nextMonth`) buttons. Clicking either button shifts `currentDate` by one month and calls `generateCalendar()` again, rebuilding the grid and fetching fresh data for the new month.
+
+```
+← Prev   [  June 2025  ]   Next →
+```
+
+The month and year are rendered in the `#monthYear` heading using `date.toLocaleString('default', { month: 'long', year: 'numeric' })`, so they automatically match the browser's locale.
+
+## Clicking a Day
+
+Clicking any numbered day cell selects it and loads all transactions for that date into the transaction table:
+
+<Steps>
+  <Step title="Click a day cell">
+    The previously selected cell loses its `selected-cell` CSS class, and the clicked cell gains it, giving a clear visual highlight.
+  </Step>
+  <Step title="Date resolved in client timezone">
+    A new `Date` object is constructed from the current calendar month/year and the clicked day number. The client's timezone string is read from `Intl.DateTimeFormat().resolvedOptions().timeZone`.
+  </Step>
+  <Step title="POST /money_transfer_from_date">
+    `loadMoneyTransferFrom()` sends the selected date (as an ISO string) and the timezone to the server. The server converts the local day boundaries to UTC and queries `MoneyTransfer` records that fall within that window.
+  </Step>
+  <Step title="Table refreshes">
+    The transaction table below the calendar is replaced with the transactions for the selected day, complete with descriptions, amounts, tags, and action buttons.
+  </Step>
+</Steps>
+
+```js
+cell.click(function () {
+    if (lastSelectedCellDate) {
+        lastSelectedCellDate.removeClass("selected-cell");
+    }
+    lastSelectedDate = cellDate;
+    lastSelectedCellDate = $(this);
+    lastSelectedCellDate.addClass("selected-cell");
+    cellDate.setDate($(this).attr('id'));
+    loadMoneyTransferFrom(tbody, cellDate);
+});
+```
+
+## Average Statistics
+
+Two aggregate stats are displayed below the `#monthYear` heading in the `.average` div:
+
+| Stat                 | Description                                                                                       |
+|----------------------|---------------------------------------------------------------------------------------------------|
+| **Average per day**  | Total of all transactions in the wallet ever, divided by the number of days since the oldest one  |
+| **Average this month** | Total for the displayed month divided by the number of days in that month                       |
+
+Both values are returned by the `POST /money_transfers` endpoint as `mean` and `mean_month` and are colored with `addSignColor` so positive averages appear green and negative averages appear red.
+
+## Timezone Handling
+
+All date boundary calculations happen in the **client's local timezone**, not UTC. The client reads its timezone using the browser-native API:
+
+```js
+Intl.DateTimeFormat().resolvedOptions().timeZone
+// e.g. "America/New_York" or "Europe/Madrid"
+```
+
+This string is sent to the server with every calendar-related request. The server uses `pytz` to localize the day's `00:00:00`–`23:59:59` boundaries in that timezone, then converts to UTC before querying the database:
+
+```python
+client_tz = pytz.timezone(client_time_zone)
+start_date = client_tz.localize(datetime(year, month, day, 0, 0, 0))
+end_date   = client_tz.localize(datetime(year, month, day, 23, 59, 59, 999999))
+
+start_date_utc = start_date.astimezone(pytz.utc)
+end_date_utc   = end_date.astimezone(pytz.utc)
+```
+
+This ensures that a transaction recorded at 11 PM in New York is counted on the correct local calendar day, even though it is stored in UTC on the server.
+
+<Note>
+  Today's date cell is automatically highlighted with the CSS class `today`. When you navigate away from the current month and come back, today's highlight reappears; the `selected-cell` highlight persists on whichever day was last clicked.
+</Note>

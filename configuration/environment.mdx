@@ -1,0 +1,79 @@
+---
+title: "Environment Variables Reference for Life Cost"
+sidebarTitle: "Environment Variables"
+description: "Configure Life Cost with three required environment variables: DATABASE_URL, GOOGLE_CLIENT_ID, and GOOGLE_CLIENT_SECRET, loaded via dotenv."
+---
+
+Life Cost reads all runtime configuration from environment variables. When running locally, these variables are loaded automatically from a `.env` file in the project root via [python-dotenv](https://pypi.org/project/python-dotenv/). In Docker or any other deployment environment, they are supplied directly as container environment variables. None of the three required variables have defaults — the application will fail to start if any of them are missing or incorrect.
+
+## Required Variables
+
+<ParamField path="DATABASE_URL" type="string" required>
+  MySQL connection string used by SQLAlchemy to connect to the database.
+
+  **Format:** `mysql://user:password@host:port/dbname`
+
+  **Example:** `mysql://admin:secret@localhost/life_db`
+
+  The port segment (`:3306`) may be omitted when using the MySQL default port.
+</ParamField>
+
+<ParamField path="GOOGLE_CLIENT_ID" type="string" required>
+  OAuth 2.0 client ID issued by Google Cloud Console. Obtained when you create an
+  OAuth 2.0 Client ID credential for a Web Application. Looks like
+  `xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com`.
+</ParamField>
+
+<ParamField path="GOOGLE_CLIENT_SECRET" type="string" required>
+  OAuth 2.0 client secret paired with `GOOGLE_CLIENT_ID`. Keep this value out of
+  version control — never commit it to a public repository.
+</ParamField>
+
+## .env File Example
+
+Create a file named `.env` at the project root. python-dotenv will load it automatically when the app starts.
+
+```env
+DATABASE_URL=mysql://admin:secret@localhost/life_db
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+<Note>
+  **SECRET\_KEY is auto-generated on every startup.** The app calls `os.urandom(24)` to produce a new secret key each time it launches:
+
+  ```python
+  app.config['SECRET_KEY'] = os.urandom(24)
+  ```
+
+  This means all active browser sessions are invalidated whenever the process restarts. For persistent sessions across restarts or across multiple workers, set `SECRET_KEY` to a fixed, cryptographically random value in your environment.
+</Note>
+
+<Warning>
+  **OAUTHLIB\_INSECURE\_TRANSPORT is hardcoded to `'1'` in the application source.** This setting tells the OAuth library to allow the OAuth flow over plain HTTP, which is required during local development but is a security risk in production:
+
+  ```python
+  os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+  ```
+
+  In production you should serve Life Cost exclusively over HTTPS (e.g., behind an nginx or Caddy TLS terminator) and remove or unset this environment variable before deploying. Leaving it enabled over HTTP in production exposes OAuth tokens in transit.
+</Warning>
+
+## Passing Variables via Docker Compose
+
+When using the bundled `docker-compose.yml`, set the three variables under the `environment` key of the `app` service. Do **not** hard-code real secrets in the compose file — use shell variable substitution or a secrets manager in production.
+
+```yaml
+services:
+  app:
+    image: akevalion/life:0.0.9.Release
+    container_name: life_app
+    environment:
+      DATABASE_URL: "mysql://admin:secret@mysql_container/life_db"
+      GOOGLE_CLIENT_ID: "your-client-id.apps.googleusercontent.com"
+      GOOGLE_CLIENT_SECRET: "your-client-secret"
+    ports:
+      - "5000:3000"
+```
+
+The app container exposes port `3000` internally; the example above maps it to `5000` on the host. Adjust the host-side port as needed for your environment.

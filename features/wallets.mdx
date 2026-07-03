@@ -1,0 +1,113 @@
+---
+title: "Wallets: Organize Spending Across Multiple Accounts"
+sidebarTitle: "Wallets"
+description: "Wallets in Life Cost group transactions by account or purpose. All users share access to every wallet, and each user tracks their last-visited wallet."
+---
+
+Wallets are the top-level organizational unit in Life Cost. Every transaction belongs to exactly one wallet, so you can keep separate accounts — for example a personal wallet, a household wallet, or a travel budget — without mixing their numbers together. All registered users automatically have access to every wallet, making Life Cost suited to shared finances across a household or team.
+
+## How Wallets Work
+
+When a new wallet is created via the API, the server immediately adds every existing user to it through the `user_wallet` association table. This means no manual permission grants are ever required: all wallets are visible to all users from the moment they are created.
+
+Each user remembers which wallet they were browsing last. When the page loads, the app reads `current_user.last_visited_wallet_id` to decide which wallet's transactions and calendar data to show. Switching wallets from the UI writes this value back to the database immediately.
+
+## Wallet Data Model
+
+The `Wallet` model is defined in `app/models.py`:
+
+```python
+class Wallet(db.Model):
+    id          = db.Column(db.Integer, primary_key=True)
+    name        = db.Column(db.String(150), unique=True, nullable=False)
+    description = db.Column(db.String(300))
+
+    users = db.relationship(
+        "User",
+        secondary=user_wallet,
+        back_populates="wallets"
+    )
+```
+
+| Field         | Type          | Notes                                      |
+|---------------|---------------|--------------------------------------------|
+| `id`          | Integer (PK)  | Auto-incremented primary key               |
+| `name`        | String (150)  | Unique across the system; required         |
+| `description` | String (300)  | Optional free-text description             |
+| `users`       | Relationship  | Many-to-many via the `user_wallet` table   |
+
+The many-to-many join table carries a `created_at` timestamp recording when each user was linked to each wallet:
+
+```python
+user_wallet = db.Table(
+    'user_wallet',
+    db.Column('user_id',    db.Integer, db.ForeignKey('user.id'),    primary_key=True),
+    db.Column('wallet_id',  db.Integer, db.ForeignKey('wallet.id'),  primary_key=True),
+    db.Column('created_at', db.DateTime, default=datetime.utcnow)
+)
+```
+
+## Switching Wallets in the UI
+
+The page header contains a `<select>` dropdown (`#groupSelector`) pre-populated with every wallet the logged-in user belongs to. The currently active wallet is pre-selected based on `last_visited_wallet_id`.
+
+When the user picks a different wallet, the `change` handler in `ajax.js` fires a `POST /update_last_visited_wallet` request and then reloads the page so every widget (table, calendar, charts) refreshes for the newly selected wallet:
+
+```js
+$('#groupSelector').change(function () {
+    let selectedGroupId = $(this).val();
+    $.ajax({
+        url: '/update_last_visited_wallet',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ wallet_id: selectedGroupId }),
+        success: function (response) {
+            location.reload();
+        }
+    });
+});
+```
+
+The server endpoint accepts a JSON body with a single `wallet_id` field, updates `current_user.last_visited_wallet_id`, and commits to the database:
+
+```python
+@app.route('/update_last_visited_wallet', methods=['POST'])
+@login_required
+def update_last_visited_wallet():
+    data = request.get_json()
+    wallet_id = data.get('wallet_id')
+    current_user.last_visited_wallet_id = wallet_id
+    db.session.commit()
+    return jsonify({"message": "Last group updated successfully"}), 200
+```
+
+## Multi-User Wallet Sharing
+
+Every wallet is shared across all users automatically. When `POST /add_wallet` is called, the handler iterates over every `User` row and appends the new wallet to each user's `wallets` relationship before committing:
+
+```python
+all_users = User.query.all()
+for user in all_users:
+    user.wallets.append(new_wallet)
+db.session.commit()
+```
+
+Likewise, when a brand-new user logs in for the first time via Google OAuth, the `set_user_wallets` helper assigns all existing wallets to that user and sets `last_visited_wallet_id` to the first wallet found.
+
+<Note>
+  When a new wallet is created, every existing user is automatically added to it via the `user_wallet` association table. No manual permission step is required.
+</Note>
+
+## API Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Get Wallet" icon="wallet" href="/api/wallets/get-wallet">
+    `GET /wallet/<id>` — Retrieve a single wallet by ID.
+  </Card>
+  <Card title="Add Wallet" icon="plus" href="/api/wallets/add-wallet">
+    `POST /add_wallet` — Create a wallet and assign it to all users.
+  </Card>
+  <Card title="Update Last Visited" icon="rotate" href="/api/wallets/update-last-visited">
+    `POST /update_last_visited_wallet` — Persist the active wallet for the current user.
+  </Card>
+</CardGroup>

@@ -1,0 +1,67 @@
+---
+title: "POST /pi_data — Income vs. Expense Breakdown"
+sidebarTitle: "POST /pi_data"
+description: "POST /pi_data returns the total income and total expenses for the active wallet across all time, used to render the income vs. expense pie chart."
+---
+
+The `/pi_data` endpoint scans every `MoneyTransfer` record in the user's active wallet and partitions each transaction into one of two buckets: income (positive amounts) or outcome (negative amounts). The resulting sums are returned as a single JSON object that powers the income-vs-expense pie chart on the dashboard. All time history is included — unlike the monthly endpoints, there is no date filter applied here.
+
+## Authentication
+
+This endpoint requires an active session. Requests without a valid session cookie are rejected by the `@login_required` decorator and redirected to the login flow.
+
+## Wallet scope
+
+All records are filtered to `current_user.last_visited_wallet_id` — the wallet the authenticated user most recently switched to. To query a different wallet, call `POST /update_last_visited_wallet` first.
+
+## Request
+
+### Body parameters
+
+<ParamField body="timeZone" type="string" required>
+  An IANA timezone database name representing the client's local timezone (e.g. `"America/New_York"`, `"Europe/Madrid"`, `"Asia/Tokyo"`). The timezone is used when iterating over transfers to localise each `created_at` timestamp, keeping the data processing pipeline consistent with other analytics endpoints.
+</ParamField>
+
+## Response
+
+Returns a single JSON object with the following fields.
+
+<ResponseField name="income" type="number">
+  The sum of all negative-amount transactions (expenses) across all time for the active wallet. Because expense entries are stored as negative numbers, this field will be a negative number or zero.
+</ResponseField>
+
+<ResponseField name="outcome" type="number">
+  The sum of all positive-amount transactions (income entries) across all time for the active wallet. This field will be a positive number or zero.
+</ResponseField>
+
+## Example
+
+### Request
+
+```bash
+curl -X POST https://your-domain.com/pi_data \
+  -H "Content-Type: application/json" \
+  --cookie "session=<your-session-cookie>" \
+  -d '{"timeZone": "Europe/Madrid"}'
+```
+
+### Request body
+
+```json
+{
+  "timeZone": "Europe/Madrid"
+}
+```
+
+### Response
+
+```json
+{
+  "income": -842.75,
+  "outcome": 1500.00
+}
+```
+
+<Note>
+  The field name `income` is used in the response to hold the sum of **negative** amounts (expenses), and `outcome` holds the sum of **positive** amounts (income entries). This naming reflects the internal variable convention in the source code. The `income` field will therefore be a negative number or zero, and `outcome` will be a positive number or zero.
+</Note>

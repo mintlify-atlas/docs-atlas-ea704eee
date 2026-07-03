@@ -1,0 +1,111 @@
+---
+title: "GET /last_money_transfers/<limit> — Fetch the most recent transfers"
+sidebarTitle: "GET /last_money_transfers/<limit>"
+description: "Return the N most recent MoneyTransfer records for the current user's active wallet, ordered newest-first. Each transfer includes its tags and the name of the user who created it."
+---
+
+Return the most recent money transfers for the authenticated user's currently active wallet, ordered by `created_at` descending (newest first). Each item in the response array includes the full tag list and the display name of the user who created the transfer, making this endpoint suitable for feeding activity feeds and dashboards.
+
+<Note>
+  The Life Cost frontend typically calls this endpoint with `limit=5` to populate the recent-transactions widget. Pass any positive integer to control the result count. If you pass a negative number the server silently falls back to a limit of **10**.
+</Note>
+
+## Endpoint
+
+```
+GET /last_money_transfers/<limit>
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow.
+
+## Path Parameters
+
+<ParamField path="limit" type="integer" required>
+  The maximum number of transfers to return. Must be a non-negative integer. If a negative value is provided the server substitutes `10`. The frontend commonly uses `5`.
+</ParamField>
+
+## Response
+
+An array of transfer objects. Each object has the following shape.
+
+<ResponseField name="id" type="integer">
+  The unique identifier of the transfer.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Human-readable description of the transfer.
+</ResponseField>
+
+<ResponseField name="amount" type="float">
+  Transfer amount. Negative values are expenses; positive values are income.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the transfer was created (UTC).
+</ResponseField>
+
+<ResponseField name="modifed_at" type="string">
+  ISO 8601 timestamp of the last modification (UTC). Note: the field name is spelled `modifed_at` (single `i`) in the database schema and response.
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Array of category/tag objects associated with this transfer.
+
+  <Expandable title="Tag object fields">
+    <ResponseField name="id" type="integer">
+      The ID of the `Category` record backing this tag.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The display name of the category (e.g. `"food"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="created_by" type="string">
+  The `username` of the `User` who created the transfer.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X GET https://your-app.example.com/last_money_transfers/5 \
+  -H "Cookie: session=<your-session-cookie>"
+```
+
+## Example Response
+
+```json
+[
+  {
+    "id": 42,
+    "description": "Groceries",
+    "amount": -35.50,
+    "created_at": "2024-01-15T10:30:00",
+    "modifed_at": "2024-01-15T10:30:00",
+    "tags": [
+      {"id": 3, "name": "food"}
+    ],
+    "created_by": "Jane Smith"
+  },
+  {
+    "id": 41,
+    "description": "Monthly salary",
+    "amount": 3200.00,
+    "created_at": "2024-01-01T09:00:00",
+    "modifed_at": "2024-01-01T09:00:00",
+    "tags": [
+      {"id": 7, "name": "income"}
+    ],
+    "created_by": "Jane Smith"
+  }
+]
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `302 Found` | The user is not authenticated. |
+| `404 Not Found` | The path parameter `limit` is not a valid integer (Flask routing rejects the request). |

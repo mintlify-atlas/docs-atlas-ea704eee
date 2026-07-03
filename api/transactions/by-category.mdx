@@ -1,0 +1,131 @@
+---
+title: "GET /money_transfers_by_category/<category_id> — Transfers by category"
+sidebarTitle: "GET /money_transfers_by_category/<id>"
+description: "Return all MoneyTransfer records in the user's active wallet that are tagged with the given category ID. Results include full tag lists and creator username per transfer."
+---
+
+Return all money transfers in the authenticated user's active wallet that carry a tag belonging to the specified category. Filtering is scoped to the current user's active wallet — transfers in other wallets that share the same category tag are excluded from the response. Each transfer in the result includes the full set of its own tags (which may span multiple categories) and the display name of the user who created it.
+
+## Endpoint
+
+```
+GET /money_transfers_by_category/<category_id>
+```
+
+## Authentication
+
+**Required.** The request must be made with an active session cookie obtained through the Google OAuth login flow.
+
+## Path Parameters
+
+<ParamField path="category_id" type="integer" required>
+  The unique integer ID of the `Category` record to filter by. This is the `id` returned in the `tags[].id` field of any transfer list response.
+</ParamField>
+
+## Response
+
+The response shape depends on whether the category exists and has any linked transfers.
+
+### Success — transfers found
+
+An array of transfer objects in the same shape returned by [`GET /last_money_transfers/<limit>`](/api/transactions/last-transfers).
+
+<ResponseField name="id" type="integer">
+  The unique identifier of the transfer.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Human-readable description of the transfer.
+</ResponseField>
+
+<ResponseField name="amount" type="float">
+  Transfer amount. Negative for expenses, positive for income.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp (UTC) when the transfer was created.
+</ResponseField>
+
+<ResponseField name="modifed_at" type="string">
+  ISO 8601 timestamp (UTC) of the last modification. Field name is `modifed_at` (single `i`) matching the database column.
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  All category/tag objects associated with this transfer — not just the one matching `category_id`.
+
+  <Expandable title="Tag object fields">
+    <ResponseField name="id" type="integer">
+      ID of the backing `Category` record.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Category name (e.g. `"food"`).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="created_by" type="string">
+  `username` of the user who created the transfer.
+</ResponseField>
+
+### Success — category exists but has no tags
+
+```json
+{"message": "No tags associated with this category"}
+```
+
+<Note>
+  The wallet-scoping filter is applied at the `MoneyTransfer` level via a `JOIN` on `Tag`: only transfers whose `wallet_id` matches `current_user.last_visited_wallet_id` are returned. A category that has tags in other wallets will still return an empty result for the current user.
+</Note>
+
+## Example Request
+
+```bash
+curl -X GET https://your-app.example.com/money_transfers_by_category/3 \
+  -H "Cookie: session=<your-session-cookie>"
+```
+
+## Example Response — transfers found
+
+```json
+[
+  {
+    "id": 42,
+    "description": "Groceries",
+    "amount": -35.50,
+    "created_at": "2024-01-15T10:30:00",
+    "modifed_at": "2024-01-15T10:30:00",
+    "tags": [
+      {"id": 3, "name": "food"},
+      {"id": 5, "name": "supermarket"}
+    ],
+    "created_by": "Jane Smith"
+  },
+  {
+    "id": 38,
+    "description": "Restaurant dinner",
+    "amount": -62.00,
+    "created_at": "2024-01-10T20:15:00",
+    "modifed_at": "2024-01-10T20:15:00",
+    "tags": [
+      {"id": 3, "name": "food"}
+    ],
+    "created_by": "Jane Smith"
+  }
+]
+```
+
+## Example Response — no tags for category
+
+```json
+{
+  "message": "No tags associated with this category"
+}
+```
+
+## Error Cases
+
+| Status | Body | Condition |
+|--------|------|-----------|
+| `302 Found` | — | The user is not authenticated. |
+| `404 Not Found` | `{"error": "Category not found"}` | No `Category` record exists with the given `category_id`. |
+| `200 OK` | `{"message": "No tags associated with this category"}` | The category exists but has no `Tag` records linked to it at all (across any wallet). |

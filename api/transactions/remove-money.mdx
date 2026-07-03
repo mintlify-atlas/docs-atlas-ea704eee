@@ -1,0 +1,54 @@
+---
+title: "DELETE /remove_money/<id> — Delete a money transfer"
+sidebarTitle: "DELETE /remove_money/<id>"
+description: "Permanently delete a MoneyTransfer and all its associated Tag records by ID. Returns 200 on success or 404 if the transfer does not exist."
+---
+
+Permanently delete a `MoneyTransfer` record and all `Tag` records linked to it. The deletion is cascaded in two steps: first all `Tag` rows whose `money_transfer_id` matches are deleted, then the `MoneyTransfer` itself is removed. This operation is irreversible.
+
+<Warning>
+  **This endpoint does NOT require authentication in the current implementation.** The `@login_required` decorator is absent from the route definition in `index.py`, which means any unauthenticated HTTP client that can reach the server can delete any transfer by ID. Treat this as a known security gap until authentication is added.
+</Warning>
+
+## Endpoint
+
+```
+DELETE /remove_money/<id>
+```
+
+## Authentication
+
+**Not enforced.** No session cookie is required by the current server implementation. See the warning above.
+
+## Path Parameters
+
+<ParamField path="id" type="integer" required>
+  The unique integer ID of the `MoneyTransfer` to delete.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+  `"MoneyTransfer removed successfully"` on success.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X DELETE https://your-app.example.com/remove_money/42
+```
+
+## Example Response
+
+```json
+{
+  "message": "MoneyTransfer removed successfully"
+}
+```
+
+## Error Cases
+
+| Status | Condition |
+|--------|-----------|
+| `404 Not Found` | No `MoneyTransfer` record exists with the given `id`. Flask returns a standard 404 response via `get_or_404`. |
+| `500 Internal Server Error` | A database error occurred while deleting the tags or the transfer. |

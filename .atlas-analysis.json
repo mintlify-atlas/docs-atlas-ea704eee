@@ -1,0 +1,87 @@
+{
+  "projectType": "saas",
+  "projectName": "Life Cost",
+  "projectDescription": "A simple personal finance web app for tracking daily income and expenses across multiple wallets, with Google OAuth authentication.",
+  "theme": "almond",
+  "primaryColor": "#4A90D9",
+  "lightColor": "#EBF4FF",
+  "darkColor": "#1E3A5F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "self-hosting"]
+          },
+          {
+            "group": "Features",
+            "pages": ["features/wallets", "features/transactions", "features/categories-tags", "features/calendar", "features/charts"]
+          },
+          {
+            "group": "Configuration",
+            "pages": ["configuration/environment", "configuration/database", "configuration/google-oauth"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": ["api/overview", "api/authentication"]
+          },
+          {
+            "group": "Wallets",
+            "pages": ["api/wallets/get-wallet", "api/wallets/add-wallet", "api/wallets/update-last-visited"]
+          },
+          {
+            "group": "Transactions",
+            "pages": ["api/transactions/get-money", "api/transactions/add-money", "api/transactions/edit-money", "api/transactions/remove-money", "api/transactions/last-transfers", "api/transactions/by-date", "api/transactions/by-month", "api/transactions/by-category"]
+          },
+          {
+            "group": "Charts & Analytics",
+            "pages": ["api/analytics/chart-data", "api/analytics/pi-data"]
+          },
+          {
+            "group": "Users & Auth",
+            "pages": ["api/auth/google-login", "api/auth/logout"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Google OAuth 2.0 authentication",
+    "Multi-wallet support with per-user wallet assignment",
+    "Transaction logging with income and expense tracking",
+    "Category and tag system for organizing transactions",
+    "Interactive calendar view with daily spending totals",
+    "Monthly spending charts and analytics",
+    "Timezone-aware date handling",
+    "Docker-based deployment with MySQL backend"
+  ],
+  "publicApiSurface": [
+    "GET /wallet/<id>",
+    "POST /add_wallet",
+    "POST /update_last_visited_wallet",
+    "GET /money/<id>",
+    "POST /add_money",
+    "POST /edit_money",
+    "DELETE /remove_money/<id>",
+    "GET /last_money_transfers/<limit>",
+    "POST /money_transfer_from_date",
+    "POST /money_transfers",
+    "GET /money_transfers_by_category/<category_id>",
+    "POST /chart_data",
+    "POST /pi_data",
+    "GET /google_login",
+    "GET /logout",
+    "GET /category/<id>",
+    "POST /add_category",
+    "GET /tag/<id>",
+    "POST /add_tag",
+    "DELETE /remove_tag/<id>"
+  ]
+}

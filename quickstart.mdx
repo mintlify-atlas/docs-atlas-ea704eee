@@ -1,47 +1,143 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Life Cost in 5 Minutes"
+sidebarTitle: "Quickstart"
+description: "Set up and run Life Cost locally using Docker Compose with MySQL, then sign in with your Google account to start tracking expenses."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+The fastest way to run Life Cost is with Docker Compose. The included `docker-compose.yml` spins up three containers — the Life Cost app, a MySQL 8.0 database, and phpMyAdmin — so you can have a fully working personal finance tracker running on your machine in minutes.
 
 ## Prerequisites
 
-Before you begin, you must have:
+Before you begin, make sure you have the following:
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+- **Docker** 20.10 or later — [Install Docker](https://docs.docker.com/get-docker/)
+- **Docker Compose** v2 (`docker compose`) or the standalone `docker-compose` v1 — bundled with Docker Desktop
+- **A Google Cloud project** with OAuth 2.0 credentials (Client ID and Client Secret). See [Google OAuth Configuration](/configuration/google-oauth) for step-by-step setup instructions.
 
-## Get started
+## Setup Steps
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Clone the repository">
+    Download the Life Cost source code to your local machine:
 
     ```bash
-    npm install your-package
+    git clone https://github.com/akevalion/life_cost.git
+    cd life_cost
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
-    ```
+  <Step title="Set up Google OAuth credentials">
+    Life Cost requires a Google OAuth 2.0 Client ID and Client Secret to authenticate users. Create these in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials) under your project.
+
+    Add `http://localhost:5000/login/google/authorized` as an **Authorised redirect URI** for your OAuth client.
+
+    For full instructions, see the [Google OAuth Configuration](/configuration/google-oauth) guide.
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+
+  <Step title="Configure environment variables">
+    The app reads three required environment variables at startup. The simplest approach is to set them directly inside `docker-compose.yml` (see the file contents below), or export them from a `.env` file before running Compose:
 
     ```bash
-    your-cli start
+    # .env
+    DATABASE_URL=mysql://admin:yourpassword@localhost/life_db
+    GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+    GOOGLE_CLIENT_SECRET=your-google-client-secret
     ```
+
+    | Variable | Description |
+    |---|---|
+    | `DATABASE_URL` | SQLAlchemy connection string for your MySQL database. |
+    | `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from Google Cloud Console. |
+    | `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Client Secret from Google Cloud Console. |
+  </Step>
+
+  <Step title="Start the stack with Docker Compose">
+    From the project root, bring up all three services in detached mode:
+
+    ```bash
+    docker-compose up -d
+    ```
+
+    Docker will pull the `akevalion/life:0.0.9.Release` image (if not already cached) and start the `app`, `mysql`, and `phpmyadmin` containers.
+
+    The included `docker-compose.yml` looks like this:
+
+    ```yaml
+    version: '3.8'
+
+    services:
+      mysql:
+        image: mysql:8.0
+        container_name: mysql_container
+        environment:
+          MYSQL_ROOT_PASSWORD: Spigit123!
+          MYSQL_DATABASE: life_db
+          MYSQL_USER: admin
+          MYSQL_PASSWORD: 123
+        volumes:
+          - mysql_data:/var/lib/mysql
+        ports:
+          - "3306:3306"
+
+      phpmyadmin:
+        image: phpmyadmin/phpmyadmin
+        container_name: phpmyadmin
+        environment:
+          PMA_HOST: mysql_container
+          MYSQL_ROOT_PASSWORD: Spigit123!
+        ports:
+          - "8080:80"
+        depends_on:
+          - mysql
+
+      app:
+        image: akevalion/life:0.0.9.Release
+        container_name: life_app
+        environment:
+          DATABASE_URL: "mysql://admin:123@192.168.1.41/life_db"
+          GOOGLE_CLIENT_ID: "41616688711-9tm06s82c7c8de1hpgt3u204qetq449a.apps.googleusercontent.com"
+          GOOGLE_CLIENT_SECRET: "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"
+        depends_on:
+          - mysql
+        ports:
+          - "5000:3000"
+
+    volumes:
+      mysql_data:
+    ```
+
+    <Warning>
+      The `docker-compose.yml` above contains **placeholder credentials** — including hardcoded passwords and a sample Google OAuth client. You **must** replace `MYSQL_ROOT_PASSWORD`, `MYSQL_PASSWORD`, `DATABASE_URL`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` with your own values before deploying to any shared or internet-facing environment.
+    </Warning>
+
+    <Note>
+      On first startup, Life Cost automatically runs `db.create_all()` via Flask-SQLAlchemy, which creates all required database tables (`user`, `wallet`, `category`, `money_transfer`, `tag`, `user_wallet`) in the configured MySQL database. No manual migration step is needed.
+    </Note>
+  </Step>
+
+  <Step title="Open the app and sign in">
+    Once the containers are running, open your browser and navigate to:
+
+    ```
+    http://localhost:5000
+    ```
+
+    You will be redirected to Google's OAuth consent screen. Sign in with your Google account — Life Cost will provision your user profile automatically and associate it with any existing wallets. You are now ready to create wallets and start logging transactions.
+
+    phpMyAdmin is also available at `http://localhost:8080` for direct database inspection during development.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Next Steps
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+<CardGroup cols={3}>
+  <Card title="Self-Hosting" icon="server" href="/self-hosting">
+    Deploy Life Cost on your own server or VPS for a permanent installation.
+  </Card>
+  <Card title="Environment Variables" icon="sliders" href="/configuration/environment">
+    See the full list of supported environment variables and configuration options.
+  </Card>
+  <Card title="API Overview" icon="code" href="/api/overview">
+    Explore the REST API endpoints for wallets, transactions, tags, and analytics.
+  </Card>
+</CardGroup>
